@@ -14,6 +14,7 @@ Per-vessel entities (``MarineTrafficVesselSensor``,
   ``VesselData.last_seen`` from the coordinator data dict.  This lets users
   build automations that react to vessels going silent.
 """
+
 from __future__ import annotations
 
 from homeassistant.helpers.device_registry import DeviceInfo

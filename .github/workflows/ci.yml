@@ -1,0 +1,66 @@
+---
+# CI workflow for the MarineTraffic Tracker Home Assistant integration.
+# Runs three jobs in parallel:
+#   1. ruff   — fast Python linting and formatting checks
+#   2. hassfest — validates the integration manifest and structure
+#   3. pytest  — mocked unit tests (no real network traffic)
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Job 1: Ruff (linting + formatting)
+  # -----------------------------------------------------------------------
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Run Ruff linter
+        run: ruff check .
+
+      - name: Run Ruff formatter (check only)
+        run: ruff format --check .
+
+  # -----------------------------------------------------------------------
+  # Job 2: HASSfest — validates manifest.json and integration structure
+  # -----------------------------------------------------------------------
+  hassfest:
+    name: HASSfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: "home-assistant/actions/hassfest@master"
+
+  # -----------------------------------------------------------------------
+  # Job 3: pytest — mocked coordinator tests
+  # -----------------------------------------------------------------------
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-asyncio pytest-homeassistant-custom-component
+
+      - name: Run tests
+        run: pytest tests/ -v

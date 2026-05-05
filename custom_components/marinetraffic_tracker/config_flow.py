@@ -4,12 +4,15 @@ The flow is split into three steps so the UI remains focused:
 
 1. ``user``   — choose tracking mode (radius or bounding box).
 2. ``radius`` / ``box`` — enter the geographic parameters for the chosen mode.
-3. ``timing`` — configure the update interval and stale vessel timeout.
+3. ``timing`` — configure the update interval, stale vessel timeout, and
+   optional vessel-type filter.
 
 An options flow (``MarineTrafficOptionsFlow``) allows users to adjust the
-timing parameters after the integration has been set up without needing to
-remove and re-add it.  Geographic parameters require a re-setup.
+timing parameters and vessel filter after the integration has been set up
+without needing to remove and re-add it.  Geographic parameters require
+a re-setup.
 """
+
 from __future__ import annotations
 
 import logging
@@ -23,6 +26,7 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
     CONF_EAST,
+    CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_NORTH,
@@ -37,7 +41,7 @@ from .const import (
     DEFAULT_TRACKING_MODE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
-    TRACKING_MODE_BOX,
+    MIN_UPDATE_INTERVAL,
     TRACKING_MODE_RADIUS,
     TRACKING_MODES,
 )
@@ -50,9 +54,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _STEP_MODE_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_TRACKING_MODE, default=DEFAULT_TRACKING_MODE): vol.In(
-            TRACKING_MODES
-        ),
+        vol.Required(CONF_TRACKING_MODE, default=DEFAULT_TRACKING_MODE): vol.In(TRACKING_MODES),
     }
 )
 
@@ -60,12 +62,12 @@ _STEP_MODE_SCHEMA = vol.Schema(
 def _radius_schema(defaults: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
-            vol.Required(
-                CONF_LATITUDE, default=defaults.get(CONF_LATITUDE, 0.0)
-            ): vol.Coerce(float),
-            vol.Required(
-                CONF_LONGITUDE, default=defaults.get(CONF_LONGITUDE, 0.0)
-            ): vol.Coerce(float),
+            vol.Required(CONF_LATITUDE, default=defaults.get(CONF_LATITUDE, 0.0)): vol.Coerce(
+                float
+            ),
+            vol.Required(CONF_LONGITUDE, default=defaults.get(CONF_LONGITUDE, 0.0)): vol.Coerce(
+                float
+            ),
             vol.Required(
                 CONF_RADIUS_KM, default=defaults.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)
             ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
@@ -76,33 +78,45 @@ def _radius_schema(defaults: dict[str, Any]) -> vol.Schema:
 def _box_schema(defaults: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
-            vol.Required(
-                CONF_NORTH, default=defaults.get(CONF_NORTH, 0.0)
-            ): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
-            vol.Required(
-                CONF_EAST, default=defaults.get(CONF_EAST, 0.0)
-            ): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
-            vol.Required(
-                CONF_SOUTH, default=defaults.get(CONF_SOUTH, 0.0)
-            ): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
-            vol.Required(
-                CONF_WEST, default=defaults.get(CONF_WEST, 0.0)
-            ): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+            vol.Required(CONF_NORTH, default=defaults.get(CONF_NORTH, 0.0)): vol.All(
+                vol.Coerce(float), vol.Range(min=-90, max=90)
+            ),
+            vol.Required(CONF_EAST, default=defaults.get(CONF_EAST, 0.0)): vol.All(
+                vol.Coerce(float), vol.Range(min=-180, max=180)
+            ),
+            vol.Required(CONF_SOUTH, default=defaults.get(CONF_SOUTH, 0.0)): vol.All(
+                vol.Coerce(float), vol.Range(min=-90, max=90)
+            ),
+            vol.Required(CONF_WEST, default=defaults.get(CONF_WEST, 0.0)): vol.All(
+                vol.Coerce(float), vol.Range(min=-180, max=180)
+            ),
         }
     )
 
 
 def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Schema for update interval, stale timeout, and vessel type filter.
+
+    The update_interval minimum is enforced here as MIN_UPDATE_INTERVAL.
+    The coordinator also enforces this floor at runtime to protect against
+    manually-edited config entries bypassing the UI schema validation.
+    """
     return vol.Schema(
         {
             vol.Required(
                 CONF_UPDATE_INTERVAL,
                 default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
-            ): vol.All(int, vol.Range(min=30, max=3600)),
+                # Anti-ban: enforce minimum polling interval in the UI schema.
+            ): vol.All(int, vol.Range(min=MIN_UPDATE_INTERVAL, max=3600)),
             vol.Required(
                 CONF_STALE_TIMEOUT,
                 default=defaults.get(CONF_STALE_TIMEOUT, DEFAULT_STALE_TIMEOUT),
             ): vol.All(int, vol.Range(min=60, max=86400)),
+            # Vessel type filter: list of AIS type codes (empty = all vessels).
+            vol.Optional(
+                CONF_FILTER_VESSEL_TYPES,
+                default=defaults.get(CONF_FILTER_VESSEL_TYPES, []),
+            ): list,
         }
     )
 
@@ -110,6 +124,7 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
 # ---------------------------------------------------------------------------
 # Config flow
 # ---------------------------------------------------------------------------
+
 
 class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a UI config flow for MarineTraffic Tracker."""
@@ -123,9 +138,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
     # Step 1: choose mode
     # ------------------------------------------------------------------
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Present the tracking mode selector."""
         if user_input is not None:
             self._data[CONF_TRACKING_MODE] = user_input[CONF_TRACKING_MODE]
@@ -142,9 +155,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
     # Step 2a: radius parameters
     # ------------------------------------------------------------------
 
-    async def async_step_radius(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_radius(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Collect center coordinates and radius."""
         if user_input is not None:
             self._data.update(user_input)
@@ -159,9 +170,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
     # Step 2b: bounding box parameters
     # ------------------------------------------------------------------
 
-    async def async_step_box(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_box(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Collect bounding box coordinates."""
         errors: dict[str, str] = {}
 
@@ -184,10 +193,8 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
     # Step 3: timing / polling parameters
     # ------------------------------------------------------------------
 
-    async def async_step_timing(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Collect update interval and stale vessel timeout."""
+    async def async_step_timing(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Collect update interval, stale vessel timeout, and vessel filter."""
         if user_input is not None:
             self._data.update(user_input)
 
@@ -248,8 +255,9 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
 # Options flow
 # ---------------------------------------------------------------------------
 
+
 class MarineTrafficOptionsFlow(OptionsFlow):
-    """Allow users to adjust timing settings without removing the integration.
+    """Allow users to adjust timing settings and vessel filter without removing the integration.
 
     Geographic parameters (coordinates, radius, box boundaries) are not
     editable via options because changing them effectively creates a different
@@ -259,9 +267,7 @@ class MarineTrafficOptionsFlow(OptionsFlow):
     def __init__(self, config_entry: ConfigEntry) -> None:
         self._config_entry = config_entry
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the options form."""
         if user_input is not None:
             return self.async_create_entry(data=user_input)
