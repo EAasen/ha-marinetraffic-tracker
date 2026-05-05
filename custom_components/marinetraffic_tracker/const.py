@@ -42,6 +42,7 @@ CONF_SOUTH = "south"
 CONF_WEST = "west"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_STALE_TIMEOUT = "stale_timeout"
+CONF_FILTER_VESSEL_TYPES = "filter_vessel_types"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -51,6 +52,10 @@ DEFAULT_RADIUS_KM = 50.0
 DEFAULT_UPDATE_INTERVAL = 60     # seconds
 DEFAULT_STALE_TIMEOUT = 600      # seconds (10 minutes)
 DEFAULT_JITTER_MAX = 10          # seconds of random pre-request delay
+DEFAULT_FILTER_VESSEL_TYPES: list[int] = []  # empty = no filter (show all)
+
+# Minimum allowed update interval — hard floor to prevent rate-limit bans.
+MIN_UPDATE_INTERVAL = 30  # seconds
 
 # ---------------------------------------------------------------------------
 # Vessel type → MDI icon mapping (based on AIS vessel type codes)
@@ -132,4 +137,20 @@ VESSEL_TYPE_MAP: dict[int, str] = {
     93: "Other (hazardous C)",
     94: "Other (hazardous D)",
     99: "Other (no additional information)",
+}
+
+# ---------------------------------------------------------------------------
+# Curated vessel type labels for the UI filter selector (AIS main categories)
+# ---------------------------------------------------------------------------
+VESSEL_TYPE_LABELS: dict[int, str] = {
+    30: "Fishing",
+    31: "Towing",
+    36: "Sailing",
+    37: "Pleasure Craft",
+    50: "Pilot Vessel",
+    52: "Tug",
+    60: "Passenger",
+    70: "Cargo",
+    80: "Tanker",
+    90: "Other",
 }

@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .client import MarineTrafficClient, VesselData
 from .const import (
     CONF_EAST,
+    CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_NORTH,
@@ -33,6 +34,7 @@ from .const import (
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    MIN_UPDATE_INTERVAL,
     TRACKING_MODE_RADIUS,
 )
 
@@ -57,12 +59,22 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         # Running vessel registry — persists across updates.
         self._vessels: dict[str, VesselData] = {}
 
-        update_interval = timedelta(
-            seconds=entry.options.get(
+        raw_interval = int(
+            entry.options.get(
                 CONF_UPDATE_INTERVAL,
                 entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
             )
         )
+        if raw_interval < MIN_UPDATE_INTERVAL:
+            _LOGGER.warning(
+                "Configured update interval %ds is below the %ds hard floor "
+                "— overriding to %ds to protect against rate-limit bans.",
+                raw_interval,
+                MIN_UPDATE_INTERVAL,
+                MIN_UPDATE_INTERVAL,
+            )
+            raw_interval = MIN_UPDATE_INTERVAL
+        update_interval = timedelta(seconds=raw_interval)
 
         super().__init__(
             hass,
@@ -123,6 +135,20 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 )
         except Exception as exc:
             raise UpdateFailed(f"Error communicating with MarineTraffic: {exc}") from exc
+
+        # Apply vessel type filter if configured.
+        # Stored values may be strings (from the SelectSelector) or ints; normalise to int.
+        raw_filter = config.get(CONF_FILTER_VESSEL_TYPES, [])
+        allowed_types: list[int] = [int(t) for t in raw_filter] if raw_filter else []
+        if allowed_types:
+            before = len(fresh)
+            fresh = [v for v in fresh if v.vessel_type in allowed_types]
+            _LOGGER.debug(
+                "Vessel type filter applied: %d → %d vessel(s) (allowed types: %s)",
+                before,
+                len(fresh),
+                allowed_types,
+            )
 
         now = datetime.now(timezone.utc)
 
