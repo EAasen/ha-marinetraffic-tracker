@@ -46,7 +46,7 @@ from custom_components.marinetraffic_tracker.const import (
 )
 from custom_components.marinetraffic_tracker.coordinator import MarineTrafficCoordinator
 
-from .conftest import MOCK_VESSEL_CARGO, MOCK_VESSEL_TANKER
+from .conftest import MOCK_VESSEL_CARGO, MOCK_VESSEL_PASSENGER, MOCK_VESSEL_TANKER
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -468,3 +468,25 @@ async def test_none_destination_and_eta_in_payload(
     assert len(events) == 1
     assert events[0].data["destination"] is None
     assert events[0].data["eta"] is None
+
+
+# ---------------------------------------------------------------------------
+# Multi-type filter: allow passenger and cargo, exclude tanker
+# ---------------------------------------------------------------------------
+
+async def test_multi_type_filter_allows_passenger_and_cargo(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+) -> None:
+    """A filter for multiple types must admit all matching types."""
+    mock_client.get_vessels_in_radius.return_value = [
+        MOCK_VESSEL_CARGO,
+        MOCK_VESSEL_TANKER,
+        MOCK_VESSEL_PASSENGER,
+    ]
+    entry = _make_radius_entry(filter_types=["70", "60"])  # cargo + passenger; tanker excluded
+    coordinator = await _make_coordinator(hass, mock_client, entry)
+
+    assert MOCK_VESSEL_CARGO.mmsi in coordinator.data
+    assert MOCK_VESSEL_PASSENGER.mmsi in coordinator.data
+    assert MOCK_VESSEL_TANKER.mmsi not in coordinator.data
