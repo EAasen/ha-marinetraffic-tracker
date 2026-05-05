@@ -33,6 +33,7 @@ from .const import (
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    MIN_UPDATE_INTERVAL,
     TRACKING_MODE_RADIUS,
 )
 
@@ -57,12 +58,27 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         # Running vessel registry — persists across updates.
         self._vessels: dict[str, VesselData] = {}
 
-        update_interval = timedelta(
-            seconds=entry.options.get(
-                CONF_UPDATE_INTERVAL,
-                entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+        # Anti-ban safety compliance: clamp the update interval to the hard floor
+        # to protect the user's IP address from MarineTraffic rate limiting.
+        try:
+            raw_interval = int(
+                entry.options.get(
+                    CONF_UPDATE_INTERVAL,
+                    entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+                )
             )
-        )
+        except (ValueError, TypeError):
+            raw_interval = DEFAULT_UPDATE_INTERVAL
+        safe_interval = max(raw_interval, MIN_UPDATE_INTERVAL)
+        if safe_interval != raw_interval:
+            _LOGGER.warning(
+                "Update interval %ds is below the safe threshold of %ds. "
+                "Overriding to %ds to prevent MarineTraffic IP ban.",
+                raw_interval,
+                MIN_UPDATE_INTERVAL,
+                MIN_UPDATE_INTERVAL,
+            )
+        update_interval = timedelta(seconds=safe_interval)
 
         super().__init__(
             hass,

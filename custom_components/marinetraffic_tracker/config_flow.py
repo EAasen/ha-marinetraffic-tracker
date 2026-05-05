@@ -39,6 +39,7 @@ from .const import (
     DEFAULT_TRACKING_MODE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    MIN_UPDATE_INTERVAL,
     TRACKING_MODE_BOX,
     TRACKING_MODE_RADIUS,
     TRACKING_MODES,
@@ -96,12 +97,27 @@ def _box_schema(defaults: dict[str, Any]) -> vol.Schema:
 
 
 def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
+    # Anti-ban safety compliance: clamp any stored interval below the hard floor
+    # so it never gets persisted or shown as a default below MIN_UPDATE_INTERVAL.
+    try:
+        raw_interval = int(defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
+    except (ValueError, TypeError):
+        raw_interval = DEFAULT_UPDATE_INTERVAL
+    safe_interval = max(raw_interval, MIN_UPDATE_INTERVAL)
+    if safe_interval != raw_interval:
+        _LOGGER.warning(
+            "Update interval %ds is below the %ds hard floor (anti-ban rate limiting). "
+            "Overriding to %ds.",
+            raw_interval,
+            MIN_UPDATE_INTERVAL,
+            MIN_UPDATE_INTERVAL,
+        )
     return vol.Schema(
         {
             vol.Required(
                 CONF_UPDATE_INTERVAL,
-                default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
-            ): vol.All(int, vol.Range(min=30, max=3600)),
+                default=safe_interval,
+            ): vol.All(int, vol.Range(min=MIN_UPDATE_INTERVAL, max=3600)),
             vol.Required(
                 CONF_STALE_TIMEOUT,
                 default=defaults.get(CONF_STALE_TIMEOUT, DEFAULT_STALE_TIMEOUT),
