@@ -18,7 +18,7 @@ import logging
 import math
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
@@ -106,7 +106,7 @@ class VesselData:
     callsign: str | None = None
     length: int | None = None
     # Timestamp of last successful observation — updated by the coordinator.
-    last_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_seen: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def unique_id(self) -> str:

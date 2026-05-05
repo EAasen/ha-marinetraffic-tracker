@@ -99,7 +99,8 @@ def test_coordinator_clamping_logic_below_floor() -> None:
             raw_interval = DEFAULT_UPDATE_INTERVAL
         safe_interval = max(raw_interval, MIN_UPDATE_INTERVAL)
         assert safe_interval == MIN_UPDATE_INTERVAL, (
-            f"Coordinator would use {safe_interval}s instead of clamping {stored_value}s to {MIN_UPDATE_INTERVAL}s"
+            f"Coordinator would use {safe_interval}s "
+            f"instead of clamping {stored_value}s to {MIN_UPDATE_INTERVAL}s"
         )
 
 

@@ -16,7 +16,6 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
@@ -40,7 +39,6 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     MIN_UPDATE_INTERVAL,
-    TRACKING_MODE_BOX,
     TRACKING_MODE_RADIUS,
     TRACKING_MODES,
     VESSEL_TYPE_LABELS,

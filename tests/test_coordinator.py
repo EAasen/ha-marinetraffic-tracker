@@ -1,23 +1,23 @@
 """Tests for MarineTrafficCoordinator — vessel filtering, hard floor, and event firing."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.marinetraffic_tracker.client import VesselData
 from custom_components.marinetraffic_tracker.const import (
     CONF_FILTER_VESSEL_TYPES,
     CONF_STALE_TIMEOUT,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_JITTER_MAX,
     DEFAULT_STALE_TIMEOUT,
-    DEFAULT_UPDATE_INTERVAL,
     MIN_UPDATE_INTERVAL,
+    TRACKING_MODE_BOX,
 )
 from custom_components.marinetraffic_tracker.coordinator import MarineTrafficCoordinator
 
-from .conftest import MOCK_VESSEL_CARGO, MOCK_VESSEL_TANKER
+from .conftest import MOCK_VESSEL_CARGO, MOCK_VESSEL_PASSENGER, MOCK_VESSEL_TANKER
 
 # ---------------------------------------------------------------------------
 # Shared test helpers
@@ -256,7 +256,7 @@ async def test_vessel_exits_fires_exited_event() -> None:
     # Vessel disappears and becomes stale
     client.get_vessels_in_radius = AsyncMock(return_value=[])
     coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = (
-        datetime.now(timezone.utc) - timedelta(seconds=700)
+        datetime.now(UTC) - timedelta(seconds=700)
     )
     await coordinator._async_update_data()
 
@@ -283,11 +283,227 @@ async def test_repeated_refreshes_do_not_refire_entered() -> None:
     coordinator = _make_coordinator(hass, client)
     # First refresh: vessel enters
     await coordinator._async_update_data()
-    entered_before = len([e for e in fired_events if e["event_type"] == "marinetraffic_vessel_entered"])
+    ev_type = "marinetraffic_vessel_entered"
+    entered_before = len([e for e in fired_events if e["event_type"] == ev_type])
 
     # Three more refreshes: same vessel, no new entered events
     for _ in range(3):
         await coordinator._async_update_data()
 
-    entered_after = len([e for e in fired_events if e["event_type"] == "marinetraffic_vessel_entered"])
-    assert entered_after == entered_before, "No entered event should fire for an already-tracked vessel"
+    entered_after = len([e for e in fired_events if e["event_type"] == ev_type])
+    assert entered_after == entered_before, (
+        "No entered event should fire for an already-tracked vessel"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: scenarios not covered by the existing unit tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_vessel_appears_and_is_tracked() -> None:
+    """A vessel returned by the API must be added to coordinator._vessels."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client)
+    result = await coordinator._async_update_data()
+
+    assert _CARGO_VESSEL.mmsi in result
+    assert len(result) == 1
+
+
+@pytest.mark.asyncio
+async def test_stale_vessel_is_purged() -> None:
+    """A vessel not seen within stale_timeout must be removed from the registry."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client, stale_timeout=600)
+    await coordinator._async_update_data()
+    assert _CARGO_VESSEL.mmsi in coordinator._vessels
+
+    # Backdate last_seen so the vessel is stale
+    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = (
+        datetime.now(UTC) - timedelta(seconds=700)
+    )
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+    result = await coordinator._async_update_data()
+
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_empty_response_clears_stale_vessels() -> None:
+    """An empty API response must not keep stale vessels alive past their timeout."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client, stale_timeout=600)
+    await coordinator._async_update_data()
+
+    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = (
+        datetime.now(UTC) - timedelta(seconds=700)
+    )
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+    result = await coordinator._async_update_data()
+
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_second_update_merges_new_vessel() -> None:
+    """A vessel appearing in a later poll must be added without evicting the first."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client)
+    await coordinator._async_update_data()
+    assert _CARGO_VESSEL.mmsi in coordinator._vessels
+
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL, _TANKER_VESSEL])
+    result = await coordinator._async_update_data()
+
+    assert _CARGO_VESSEL.mmsi in result
+    assert _TANKER_VESSEL.mmsi in result
+    assert len(result) == 2
+
+
+@pytest.mark.asyncio
+async def test_box_mode_calls_get_vessels_in_box() -> None:
+    """In bounding-box mode the coordinator must call get_vessels_in_box."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_box = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    entry = _make_entry(data={
+        "tracking_mode": TRACKING_MODE_BOX,
+        "north": 60.0,
+        "east": 11.0,
+        "south": 59.0,
+        "west": 10.0,
+        CONF_UPDATE_INTERVAL: 60,
+        CONF_STALE_TIMEOUT: 600,
+    })
+    coordinator = MarineTrafficCoordinator(hass, entry, client)
+    result = await coordinator._async_update_data()
+
+    client.get_vessels_in_box.assert_called_once()
+    client.get_vessels_in_radius.assert_not_called()
+    assert _CARGO_VESSEL.mmsi in result
+
+
+@pytest.mark.asyncio
+async def test_jitter_sleep_is_called() -> None:
+    """asyncio.sleep must be called once per poll for jitter."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+
+    coordinator = _make_coordinator(hass, client)
+
+    with patch(
+        "custom_components.marinetraffic_tracker.coordinator.asyncio.sleep",
+        new_callable=AsyncMock,
+    ) as mock_sleep:
+        await coordinator._async_update_data()
+
+    mock_sleep.assert_called_once()
+    sleep_arg = mock_sleep.call_args[0][0]
+    assert 0 <= sleep_arg <= DEFAULT_JITTER_MAX
+
+
+@pytest.mark.asyncio
+async def test_filtered_vessel_does_not_fire_entered_event() -> None:
+    """A vessel excluded by the type filter must not trigger a vessel_entered event."""
+    hass = MagicMock()
+    fired_events: list[dict] = []
+
+    def capture_event(event_type: str, data: dict) -> None:
+        fired_events.append({"event_type": event_type, "data": data})
+
+    hass.bus = MagicMock()
+    hass.bus.async_fire = capture_event
+
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+
+    coordinator = _make_coordinator(hass, client, filter_types=[70])  # cargo only
+    await coordinator._async_update_data()
+
+    # Only tanker returned — should be filtered out and NOT fire entered
+    client.get_vessels_in_radius = AsyncMock(return_value=[_TANKER_VESSEL])
+    await coordinator._async_update_data()
+
+    entered = [e for e in fired_events if e["event_type"] == "marinetraffic_vessel_entered"]
+    assert len(entered) == 0
+    assert _TANKER_VESSEL.mmsi not in coordinator._vessels
+
+
+@pytest.mark.asyncio
+async def test_exited_event_payload_has_last_known_values() -> None:
+    """Exit event payload must include last-known vessel name and type."""
+    hass = MagicMock()
+    fired_events: list[dict] = []
+
+    def capture_event(event_type: str, data: dict) -> None:
+        fired_events.append({"event_type": event_type, "data": data})
+
+    hass.bus = MagicMock()
+    hass.bus.async_fire = capture_event
+
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_TANKER_VESSEL])
+
+    coordinator = _make_coordinator(hass, client, stale_timeout=600)
+    await coordinator._async_update_data()
+
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+    coordinator._vessels[_TANKER_VESSEL.mmsi].last_seen = (
+        datetime.now(UTC) - timedelta(seconds=700)
+    )
+    await coordinator._async_update_data()
+
+    exited = [e for e in fired_events if e["event_type"] == "marinetraffic_vessel_exited"]
+    assert len(exited) == 1
+    assert exited[0]["data"]["mmsi"] == _TANKER_VESSEL.mmsi
+    assert exited[0]["data"]["name"] == _TANKER_VESSEL.name
+    assert exited[0]["data"]["vessel_type"] == _TANKER_VESSEL.vessel_type
+    assert exited[0]["data"]["destination"] is None
+    assert exited[0]["data"]["eta"] is None
+
+
+@pytest.mark.asyncio
+async def test_multi_type_filter_allows_passenger_and_cargo() -> None:
+    """A filter for multiple types must admit all matching types and exclude others."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(
+        return_value=[_CARGO_VESSEL, _TANKER_VESSEL, MOCK_VESSEL_PASSENGER]
+    )
+
+    # Filter: cargo (70) + passenger (60) — tanker (80) excluded
+    coordinator = _make_coordinator(hass, client, filter_types=[70, 60])
+    result = await coordinator._async_update_data()
+
+    assert _CARGO_VESSEL.mmsi in result
+    assert MOCK_VESSEL_PASSENGER.mmsi in result
+    assert _TANKER_VESSEL.mmsi not in result

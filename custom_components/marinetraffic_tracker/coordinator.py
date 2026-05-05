@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -172,7 +172,7 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 allowed_types,
             )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Snapshot of MMSIs tracked before this update cycle.
         previous_mmsis: set[str] = set(self._vessels.keys())
@@ -198,7 +198,11 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         ]
         for mmsi in stale:
             departed = self._vessels[mmsi]
-            _LOGGER.debug("Removing stale vessel MMSI=%s (last seen >%ds ago)", mmsi, self.stale_timeout_seconds)
+            _LOGGER.debug(
+                "Removing stale vessel MMSI=%s (last seen >%ds ago)",
+                mmsi,
+                self.stale_timeout_seconds,
+            )
             self.hass.bus.async_fire(
                 "marinetraffic_vessel_exited",
                 self._vessel_event_payload(departed),

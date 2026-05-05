@@ -1,7 +1,7 @@
 """Shared fixtures for MarineTraffic Tracker tests."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -25,7 +25,7 @@ MOCK_VESSEL_CARGO = VesselData(
     origin="SUEZ",
     destination="ROTTERDAM",
     eta="2026-05-15 14:00:00",
-    last_seen=datetime.now(timezone.utc),
+    last_seen=datetime.now(UTC),
 )
 
 MOCK_VESSEL_TANKER = VesselData(
@@ -41,7 +41,23 @@ MOCK_VESSEL_TANKER = VesselData(
     origin="JEDDAH",
     destination=None,
     eta=None,
-    last_seen=datetime.now(timezone.utc),
+    last_seen=datetime.now(UTC),
+)
+
+MOCK_VESSEL_PASSENGER = VesselData(
+    mmsi="555555555",
+    name="FJORD QUEEN",
+    vessel_type=60,
+    latitude=59.9,
+    longitude=10.7,
+    heading=0,
+    course=0,
+    speed=0.0,
+    status="Moored",
+    origin="OSLO",
+    destination=None,
+    eta=None,
+    last_seen=datetime.now(UTC),
 )
 
 
