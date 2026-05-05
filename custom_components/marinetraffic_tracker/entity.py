@@ -3,6 +3,16 @@
 All entities produced by this integration inherit from this class so that
 they share a common virtual "device" (one per config entry) and follow the
 same coordinator lifecycle.
+
+Per-vessel entities (``MarineTrafficVesselSensor``,
+``MarineTrafficVesselTracker``) are expected to:
+
+- Implement an ``available`` property that returns ``False`` once the
+  coordinator has purged the vessel as stale (not seen within the configured
+  ``stale_timeout``).
+- Expose a ``last_seen`` key in ``extra_state_attributes`` by reading
+  ``VesselData.last_seen`` from the coordinator data dict.  This lets users
+  build automations that react to vessels going silent.
 """
 from __future__ import annotations
 

@@ -64,6 +64,9 @@ class VesselData:
     destination: str | None
     eta: str | None
     imo: str | None = None
+    flag: str | None = None
+    callsign: str | None = None
+    length: int | None = None
     # Timestamp of last successful observation — updated by the coordinator.
     last_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 

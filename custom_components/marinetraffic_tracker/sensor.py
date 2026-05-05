@@ -22,7 +22,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import VesselData
-from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS
+from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP
 from .coordinator import MarineTrafficCoordinator
 from .entity import MarineTrafficEntity
 
@@ -167,7 +167,7 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
         return {
             "mmsi": vessel.mmsi,
             "imo": vessel.imo,
-            "vessel_type": vessel.vessel_type,
+            "vessel_type": VESSEL_TYPE_MAP.get(vessel.vessel_type, f"Type {vessel.vessel_type}"),
             "latitude": vessel.latitude,
             "longitude": vessel.longitude,
             "heading": vessel.heading,
