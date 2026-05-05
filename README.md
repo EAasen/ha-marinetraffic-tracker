@@ -2,57 +2,38 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/EAasen/ha-marinetraffic-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/EAasen/ha-marinetraffic-tracker/actions/workflows/ci.yml)
 
 A Home Assistant integration that tracks real-time maritime traffic within a specified radius or geographic boundary. Inspired by the `home-assistant-flightradar24` project, this integration identifies ships, their heading, destination, and speed without requiring a paid MarineTraffic API account.
-
-**Integration domain:** `marinetraffic_tracker`
 
 ## ✨ Features
 
 - **Boundary Tracking:** Monitor vessels within a circular radius or a coordinate-based bounding box.
-- **Vessel Type Filter:** Optionally restrict tracking to specific vessel types (cargo, tanker, passenger, etc.).
 - **Detailed Telemetry:** Provides vessel name, type, MMSI, status, speed, heading, and course.
 - **Voyage Data:** Scrapes origin, destination, and ETA where publicly available.
-- **Auto-Cleanup:** Vessels not seen within the stale timeout are automatically removed.
+- **Auto-Cleanup:** Entities are automatically removed when a ship leaves your tracking zone.
 - **Map Integration:** Full support for the native HA Map card and `device_tracker` entities.
-- **Vessel Photos:** Per-vessel entity pictures sourced from MarineTraffic via MMSI.
-- **HA Bus Events:** `marinetraffic_vessel_entered` and `marinetraffic_vessel_exited` events for automation triggers.
 
 ## 📊 Entities & Attributes
 
-The integration creates a `sensor.marinetraffic_vessel_count` for the total ships in range.
-
-Per-vessel entities (sensor and device tracker) are **disabled by default** to avoid overwhelming the entity registry in busy ports — enable individual vessels as needed.
+The integration domain is `marinetraffic_tracker`. It creates one **Vessel Count** sensor for the total ships in range, plus individual sensor and device-tracker entities per vessel with the following attributes:
 
 | Attribute | Description |
 | :--- | :--- |
 | `mmsi` | Maritime Mobile Service Identity |
+| `vessel_name` | Name of the vessel |
 | `vessel_type` | Type (Cargo, Tanker, Passenger, etc.) |
-| `status` | Current state (Under way, At anchor, Moored) |
+| `status` | Current navigational state (e.g. Under Way, At Anchor, Moored) |
 | `speed_knots` | Current speed in knots |
-| `heading` | Direction the ship is pointing |
+| `heading` | Direction the ship is pointing (degrees) |
+| `course` | Course over ground (degrees) |
 | `origin` | Port of departure |
 | `destination` | Destination port |
 | `eta` | Estimated Time of Arrival |
-
-## 🤖 Automation Events
-
-The integration fires two events on the Home Assistant event bus:
-
-- `marinetraffic_vessel_entered` — fired when a vessel first appears in the tracking area
-- `marinetraffic_vessel_exited` — fired when a vessel leaves or ages out of the tracking area
-
-**Event payload fields:** `mmsi`, `name`, `vessel_type`, `latitude`, `longitude`, `destination`, `eta`, `entry_id`
-
-Example automation trigger:
-```yaml
-trigger:
-  - platform: event
-    event_type: marinetraffic_vessel_entered
-    event_data:
-      vessel_type: 70  # Cargo vessel
-```
+| `imo` | IMO vessel number |
+| `callsign` | Radio callsign |
+| `flag` | Flag state (ISO 2-letter code) |
+| `length` | Vessel length in metres |
+| `last_seen` | Timestamp of last AIS observation |
 
 ## 🚀 Installation
 
@@ -73,14 +54,15 @@ trigger:
 Configuration is handled entirely via the UI:
 1. Go to **Settings** > **Devices & Services**.
 2. Click **Add Integration** and search for **MarineTraffic Tracker**.
-3. Choose tracking mode: **Radius** (circle around a point) or **Bounding Box**.
-4. Enter your geographic parameters.
-5. Set the **Update Interval** (minimum 30 seconds), **Stale Vessel Timeout**, and optionally a **Vessel Type Filter**.
+3. Choose a tracking mode:
+   - **Radius** — enter centre coordinates and a search radius (km).
+   - **Bounding Box** — enter north/east/south/west boundary coordinates.
+4. Set the **Update Interval** (default: 60 s, minimum: 30 s) and **Stale Vessel Timeout** (default: 600 s).
 
-Settings can be adjusted later via the integration's **Configure** button without removing and re-adding the integration.
+Timing settings can be adjusted later via **Options** without removing the integration.
 
 ## ⚠️ Disclaimer & Rate Limiting
 
-This integration uses web-scraping techniques to fetch data from MarineTraffic's public live map.
-- **Use at your own risk:** Polling faster than 30 seconds may result in a temporary IP ban from MarineTraffic. The integration enforces a minimum 30-second interval automatically.
+This integration uses web-scraping techniques to fetch data from MarineTraffic's public live map. 
+- **Use at your own risk:** Excessive polling (less than 30s) may result in a temporary IP ban from MarineTraffic.
 - This project is not affiliated with, authorized, or endorsed by MarineTraffic.com.

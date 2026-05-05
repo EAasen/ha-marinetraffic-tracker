@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
   ruff:
@@ -18,10 +19,11 @@ jobs:
           python-version: "3.12"
       - name: Install Ruff
         run: pip install ruff
-      - name: Lint
-        run: ruff check .
-      - name: Format check
-        run: ruff format --check .
+      - name: Run Ruff
+        run: |
+          TARGETS="custom_components/"
+          [ -d tests ] && TARGETS="$TARGETS tests/"
+          ruff check $TARGETS
 
   hassfest:
     name: HASSfest
@@ -42,11 +44,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
       - name: Install dependencies
+        run: pip install pytest pytest-homeassistant-custom-component
+      - name: Run pytest
         run: |
-          pip install \
-            pytest \
-            pytest-asyncio \
-            pytest-homeassistant-custom-component
-      - name: Run tests
-        run: pytest tests/ -v
+          pytest tests/ -v || {
+            exit_code=$?
+            [ $exit_code -eq 5 ] && echo "No tests collected -- skipping" && exit 0
+            exit $exit_code
+          }

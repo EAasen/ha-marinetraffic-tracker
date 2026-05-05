@@ -45,9 +45,10 @@ from .const import (
     DOMAIN,
     VESSEL_TYPE_ICONS,
     VESSEL_TYPE_MAP,
+    vessel_photo_url,
 )
 from .coordinator import MarineTrafficCoordinator
-from .entity import MarineTrafficEntity, vessel_photo_url
+from .entity import MarineTrafficEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -99,19 +100,19 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
     configured stale timeout, default 10 minutes).  The entity remains in the
     entity registry so that its history is preserved.
 
-    Per-vessel trackers are disabled by default in the entity registry to
-    avoid overwhelming users with entities in busy ports.  Users can enable
-    individual vessel trackers manually.
-
     AIS data fields exposed as state attributes
     -------------------------------------------
     All PRD-required attributes are present:
     mmsi, vessel_name, vessel_type, speed_knots, heading, course, status,
     origin, destination, eta, latitude, longitude, imo, callsign, length,
     flag, last_seen.
+
+    Disabled by default to prevent entity-list explosion in busy ports or
+    high-traffic areas.  Users can enable individual vessel entities manually
+    via the Home Assistant entity registry.
     """
 
-    # Disabled by default — opt-in per vessel to avoid entity explosion.
+    # Disabled by default — prevents entity explosion in high-traffic areas.
     _attr_entity_registry_enabled_default = False
 
     def __init__(
@@ -185,9 +186,8 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
 
     @property
     def entity_picture(self) -> str | None:
-        """Return a MarineTraffic photo URL for the vessel, or None."""
-        vessel = self._vessel
-        return vessel_photo_url(vessel.mmsi) if vessel else None
+        """Return a MarineTraffic thumbnail URL for this vessel, or None."""
+        return vessel_photo_url(self._mmsi)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

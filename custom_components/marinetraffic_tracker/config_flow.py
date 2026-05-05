@@ -4,12 +4,11 @@ The flow is split into three steps so the UI remains focused:
 
 1. ``user``   — choose tracking mode (radius or bounding box).
 2. ``radius`` / ``box`` — enter the geographic parameters for the chosen mode.
-3. ``timing`` — configure the update interval, stale vessel timeout, and
-   optional vessel-type filter.
+3. ``timing`` — configure the update interval and stale vessel timeout.
 
 An options flow (``MarineTrafficOptionsFlow``) allows users to adjust the
-timing and filter parameters after the integration has been set up without
-needing to remove and re-add it.  Geographic parameters require a re-setup.
+timing parameters after the integration has been set up without needing to
+remove and re-add it.  Geographic parameters require a re-setup.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import selector
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_EAST,
@@ -35,7 +34,6 @@ from .const import (
     CONF_TRACKING_MODE,
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
-    DEFAULT_FILTER_VESSEL_TYPES,
     DEFAULT_RADIUS_KM,
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_TRACKING_MODE,
@@ -44,7 +42,7 @@ from .const import (
     MIN_UPDATE_INTERVAL,
     TRACKING_MODE_RADIUS,
     TRACKING_MODES,
-    VESSEL_TYPE_MAP,
+    VESSEL_TYPE_LABELS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -96,15 +94,26 @@ def _box_schema(defaults: dict[str, Any]) -> vol.Schema:
 
 
 def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
-    vessel_type_options = [
-        selector.SelectOptionDict(value=str(code), label=label)
-        for code, label in sorted(VESSEL_TYPE_MAP.items())
-    ]
+    # Anti-ban safety compliance: clamp any stored interval below the hard floor
+    # so it never gets persisted or shown as a default below MIN_UPDATE_INTERVAL.
+    try:
+        raw_interval = int(defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
+    except (ValueError, TypeError):
+        raw_interval = DEFAULT_UPDATE_INTERVAL
+    safe_interval = max(raw_interval, MIN_UPDATE_INTERVAL)
+    if safe_interval != raw_interval:
+        _LOGGER.warning(
+            "Update interval %ds is below the %ds hard floor (anti-ban rate limiting). "
+            "Overriding to %ds.",
+            raw_interval,
+            MIN_UPDATE_INTERVAL,
+            MIN_UPDATE_INTERVAL,
+        )
     return vol.Schema(
         {
             vol.Required(
                 CONF_UPDATE_INTERVAL,
-                default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+                default=safe_interval,
             ): vol.All(int, vol.Range(min=MIN_UPDATE_INTERVAL, max=3600)),
             vol.Required(
                 CONF_STALE_TIMEOUT,
@@ -112,14 +121,8 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
             ): vol.All(int, vol.Range(min=60, max=86400)),
             vol.Optional(
                 CONF_FILTER_VESSEL_TYPES,
-                default=defaults.get(CONF_FILTER_VESSEL_TYPES, DEFAULT_FILTER_VESSEL_TYPES),
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=vessel_type_options,
-                    multiple=True,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
+                default=defaults.get(CONF_FILTER_VESSEL_TYPES, []),
+            ): cv.multi_select(VESSEL_TYPE_LABELS),
         }
     )
 

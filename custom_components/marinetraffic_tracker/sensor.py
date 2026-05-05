@@ -23,9 +23,9 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import VesselData
-from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP
+from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP, vessel_photo_url
 from .coordinator import MarineTrafficCoordinator
-from .entity import MarineTrafficEntity, vessel_photo_url
+from .entity import MarineTrafficEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -108,15 +108,15 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
     State: current navigational status (e.g. "Under Way Using Engine").
     Attributes: full telemetry for use in map cards and automations.
 
-    Per-vessel sensors are disabled by default in the entity registry to
-    avoid overwhelming users with entities in busy ports.  Users can enable
-    individual vessel sensors manually.
-
     EXTENSION POINT: Add richer attributes here (e.g. draught, destination
     confidence) as the client parser is extended to provide them.
+
+    Disabled by default to prevent entity-list explosion in busy ports or
+    high-traffic areas.  Users can enable individual vessel entities manually
+    via the Home Assistant entity registry.
     """
 
-    # Disabled by default — opt-in per vessel to avoid entity explosion.
+    # Disabled by default — prevents entity explosion in high-traffic areas.
     _attr_entity_registry_enabled_default = False
 
     def __init__(
@@ -163,9 +163,8 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
 
     @property
     def entity_picture(self) -> str | None:
-        """Return a MarineTraffic photo URL for the vessel, or None."""
-        vessel = self._vessel
-        return vessel_photo_url(vessel.mmsi) if vessel else None
+        """Return a MarineTraffic thumbnail URL for this vessel, or None."""
+        return vessel_photo_url(self._mmsi)
 
     @property
     def native_value(self) -> str | None:

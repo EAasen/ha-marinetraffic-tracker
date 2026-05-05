@@ -5,10 +5,35 @@ from __future__ import annotations
 DOMAIN = "marinetraffic_tracker"
 
 # ---------------------------------------------------------------------------
-# HA bus event names
+# Vessel photo URL helper
 # ---------------------------------------------------------------------------
-EVENT_VESSEL_ENTERED = "marinetraffic_vessel_entered"
-EVENT_VESSEL_EXITED = "marinetraffic_vessel_exited"
+# MarineTraffic thumbnail URL pattern.  Kept here so it can be updated in one
+# place if the scheme changes.
+_VESSEL_PHOTO_URL_TEMPLATE = (
+    "https://photos.marinetraffic.com/ais/showphoto.aspx?mmsi={mmsi}&size=thumb"
+)
+
+
+def vessel_photo_url(mmsi: str | None) -> str | None:
+    """Return a MarineTraffic thumbnail URL for the given MMSI.
+
+    Returns ``None`` when *mmsi* is ``None``, empty, or not a valid
+    all-digit string so that callers can safely use the result without
+    additional guards.
+
+    Args:
+        mmsi: The vessel MMSI, expected to be a non-empty digit-only string.
+
+    Returns:
+        A thumbnail URL string, or ``None`` if the MMSI is unusable.
+    """
+    if mmsi is None:
+        return None
+    mmsi_str = str(mmsi).strip()
+    if not mmsi_str or not mmsi_str.isdigit():
+        return None
+    return _VESSEL_PHOTO_URL_TEMPLATE.format(mmsi=mmsi_str)
+
 
 # ---------------------------------------------------------------------------
 # State attribute keys — used by device_tracker and sensor platforms
@@ -59,18 +84,14 @@ DEFAULT_RADIUS_KM = 50.0
 DEFAULT_UPDATE_INTERVAL = 60  # seconds
 DEFAULT_STALE_TIMEOUT = 600  # seconds (10 minutes)
 DEFAULT_JITTER_MAX = 10  # seconds of random pre-request delay
-# Empty list = track all vessel types; non-empty = allow only listed type codes
-DEFAULT_FILTER_VESSEL_TYPES: list[str] = []
-
-# Minimum safe polling interval — below this value MarineTraffic may ban the IP.
-# Enforced in both the config/options flow schema and the coordinator at runtime.
-MIN_UPDATE_INTERVAL = 30  # seconds
+DEFAULT_FILTER_VESSEL_TYPES: list[str] = []  # empty = no filter (show all types)
 
 # ---------------------------------------------------------------------------
-# MMSI-based vessel photo URL
-# Returns None for non-9-digit MMSIs (see entity.vessel_photo_url helper).
+# Safety limits — anti-ban rate limiting compliance
+# Polling faster than 30s risks MarineTraffic banning the user's IP address.
+# This constant is the hard floor enforced both in config schema and at runtime.
 # ---------------------------------------------------------------------------
-VESSEL_PHOTO_URL = "https://photos.marinetraffic.com/ais/photos/vessels/small/{mmsi}.jpg"
+MIN_UPDATE_INTERVAL = 30  # seconds — never poll faster than this
 
 # ---------------------------------------------------------------------------
 # Vessel type → MDI icon mapping (based on AIS vessel type codes)
@@ -94,6 +115,26 @@ VESSEL_TYPE_ICONS: dict[int, str] = {
     89: "mdi:water",
 }
 DEFAULT_VESSEL_ICON = "mdi:ferry"
+
+# ---------------------------------------------------------------------------
+# Vessel type labels for multi-select filtering (string keys required by HA).
+# This is a curated subset of the most common AIS vessel categories.
+# Keys are string representations of the integer AIS type codes used in
+# VESSEL_TYPE_ICONS and VESSEL_TYPE_MAP (e.g. "70" corresponds to code 70).
+# ---------------------------------------------------------------------------
+VESSEL_TYPE_LABELS: dict[str, str] = {
+    "30": "Fishing",
+    "31": "Towing",
+    "36": "Sailing",
+    "37": "Pleasure Craft",
+    "50": "Pilot Vessel",
+    "51": "Search and Rescue",
+    "52": "Tug",
+    "60": "Passenger",
+    "70": "Cargo",
+    "80": "Tanker",
+    "90": "Other",
+}
 
 # ---------------------------------------------------------------------------
 # Vessel type code → human-readable name (AIS ship type codes)

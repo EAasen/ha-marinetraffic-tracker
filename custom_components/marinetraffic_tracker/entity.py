@@ -20,20 +20,8 @@ from __future__ import annotations
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, VESSEL_PHOTO_URL
+from .const import DOMAIN
 from .coordinator import MarineTrafficCoordinator
-
-
-def vessel_photo_url(mmsi: str | None) -> str | None:
-    """Return a MarineTraffic photo URL for the given MMSI, or None.
-
-    A valid MMSI is exactly 9 ASCII digits.  Any other value (None, empty
-    string, wrong length, non-numeric) returns ``None`` so callers can safely
-    use the result as ``entity_picture`` without additional guards.
-    """
-    if not mmsi or not mmsi.isdigit() or len(mmsi) != 9:
-        return None
-    return VESSEL_PHOTO_URL.format(mmsi=mmsi)
 
 
 class MarineTrafficEntity(CoordinatorEntity[MarineTrafficCoordinator]):
