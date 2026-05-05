@@ -22,7 +22,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import VesselData
-from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP
+from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP, vessel_photo_url
 from .coordinator import MarineTrafficCoordinator
 from .entity import MarineTrafficEntity
 
@@ -151,6 +151,11 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
         if vessel is None:
             return DEFAULT_VESSEL_ICON
         return VESSEL_TYPE_ICONS.get(vessel.vessel_type, DEFAULT_VESSEL_ICON)
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return a MarineTraffic thumbnail URL for this vessel, or None."""
+        return vessel_photo_url(self._mmsi)
 
     @property
     def native_value(self) -> str | None:

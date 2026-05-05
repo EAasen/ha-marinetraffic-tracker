@@ -4,6 +4,36 @@ from __future__ import annotations
 DOMAIN = "marinetraffic_tracker"
 
 # ---------------------------------------------------------------------------
+# Vessel photo URL helper
+# ---------------------------------------------------------------------------
+# MarineTraffic thumbnail URL pattern.  Kept here so it can be updated in one
+# place if the scheme changes.
+_VESSEL_PHOTO_URL_TEMPLATE = (
+    "https://photos.marinetraffic.com/ais/showphoto.aspx?mmsi={mmsi}&size=thumb"
+)
+
+
+def vessel_photo_url(mmsi: str | None) -> str | None:
+    """Return a MarineTraffic thumbnail URL for the given MMSI.
+
+    Returns ``None`` when *mmsi* is ``None``, empty, or not a valid
+    all-digit string so that callers can safely use the result without
+    additional guards.
+
+    Args:
+        mmsi: The vessel MMSI, expected to be a non-empty digit-only string.
+
+    Returns:
+        A thumbnail URL string, or ``None`` if the MMSI is unusable.
+    """
+    if mmsi is None:
+        return None
+    mmsi_str = str(mmsi).strip()
+    if not mmsi_str or not mmsi_str.isdigit():
+        return None
+    return _VESSEL_PHOTO_URL_TEMPLATE.format(mmsi=mmsi_str)
+
+# ---------------------------------------------------------------------------
 # State attribute keys — used by device_tracker and sensor platforms
 # ---------------------------------------------------------------------------
 ATTR_MMSI = "mmsi"
