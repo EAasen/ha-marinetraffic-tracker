@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .client import MarineTrafficClient, VesselData
 from .const import (
     CONF_EAST,
+    CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_NORTH,
@@ -33,6 +34,8 @@ from .const import (
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    EVENT_VESSEL_ENTERED,
+    EVENT_VESSEL_EXITED,
     TRACKING_MODE_RADIUS,
 )
 
@@ -126,10 +129,29 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
 
         now = datetime.now(timezone.utc)
 
+        # Determine which MMSIs are genuinely new (not yet tracked).
+        previously_tracked: set[str] = set(self._vessels)
+
         # Merge fresh observations into the registry
         for vessel in fresh:
             vessel.last_seen = now
             self._vessels[vessel.mmsi] = vessel
+
+        # Apply optional vessel-type filter
+        filter_types: list[int] = list(
+            self._entry.options.get(
+                CONF_FILTER_VESSEL_TYPES,
+                self._entry.data.get(CONF_FILTER_VESSEL_TYPES, []),
+            )
+        )
+        if filter_types:
+            excluded = [
+                mmsi
+                for mmsi, v in self._vessels.items()
+                if v.vessel_type not in filter_types
+            ]
+            for mmsi in excluded:
+                del self._vessels[mmsi]
 
         # Remove vessels not seen within the stale timeout
         stale_cutoff = now - timedelta(seconds=self.stale_timeout_seconds)
@@ -138,7 +160,27 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         ]
         for mmsi in stale:
             _LOGGER.debug("Removing stale vessel MMSI=%s (last seen >%ds ago)", mmsi, self.stale_timeout_seconds)
-            del self._vessels[mmsi]
+            exited_vessel = self._vessels.pop(mmsi)
+            self.hass.bus.async_fire(
+                EVENT_VESSEL_EXITED,
+                {
+                    "mmsi": mmsi,
+                    "name": exited_vessel.name,
+                    "vessel_type": exited_vessel.vessel_type,
+                },
+            )
+
+        # Fire entered events for vessels that are new this cycle.
+        for mmsi, vessel in self._vessels.items():
+            if mmsi not in previously_tracked:
+                self.hass.bus.async_fire(
+                    EVENT_VESSEL_ENTERED,
+                    {
+                        "mmsi": mmsi,
+                        "name": vessel.name,
+                        "vessel_type": vessel.vessel_type,
+                    },
+                )
 
         _LOGGER.debug(
             "Poll complete: %d active vessel(s), %d stale removed",

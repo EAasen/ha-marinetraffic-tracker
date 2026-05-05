@@ -42,6 +42,13 @@ CONF_SOUTH = "south"
 CONF_WEST = "west"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_STALE_TIMEOUT = "stale_timeout"
+CONF_FILTER_VESSEL_TYPES = "filter_vessel_types"
+
+# ---------------------------------------------------------------------------
+# HA event names fired by the coordinator
+# ---------------------------------------------------------------------------
+EVENT_VESSEL_ENTERED = "marinetraffic_vessel_entered"
+EVENT_VESSEL_EXITED = "marinetraffic_vessel_exited"
 
 # ---------------------------------------------------------------------------
 # Defaults
