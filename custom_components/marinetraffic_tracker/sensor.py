@@ -22,7 +22,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import VesselData
-from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP
+from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP, vessel_photo_url
 from .coordinator import MarineTrafficCoordinator
 from .entity import MarineTrafficEntity
 
@@ -106,9 +106,16 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
     State: current navigational status (e.g. "Under Way Using Engine").
     Attributes: full telemetry for use in map cards and automations.
 
+    Per-vessel sensors are **disabled by default** to prevent entity explosion
+    in busy ports.  Users can enable individual vessels via the HA UI.
+
     EXTENSION POINT: Add richer attributes here (e.g. draught, destination
     confidence) as the client parser is extended to provide them.
     """
+
+    # Disabled by default to prevent entity explosion in high-traffic areas.
+    # Users opt-in per vessel via the HA entity registry UI.
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -151,6 +158,11 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
         if vessel is None:
             return DEFAULT_VESSEL_ICON
         return VESSEL_TYPE_ICONS.get(vessel.vessel_type, DEFAULT_VESSEL_ICON)
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return a thumbnail photo URL from MarineTraffic, or None."""
+        return vessel_photo_url(self._mmsi)
 
     @property
     def native_value(self) -> str | None:

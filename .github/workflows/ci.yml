@@ -1,0 +1,74 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Ruff — lint and format check
+  # ---------------------------------------------------------------------------
+  ruff:
+    name: Ruff lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Lint custom_components
+        run: ruff check custom_components/
+
+      - name: Lint tests (if present)
+        run: |
+          if [ -d tests ]; then
+            ruff check tests/
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 2. HASSfest — validate manifest, config flow, strings
+  # ---------------------------------------------------------------------------
+  hassfest:
+    name: HASSfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: home-assistant/actions/hassfest@master
+
+  # ---------------------------------------------------------------------------
+  # 3. Pytest — run the test suite
+  # ---------------------------------------------------------------------------
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pytest-homeassistant-custom-component
+
+      - name: Run tests
+        # Exit code 5 means "no tests collected" — acceptable until the test
+        # suite is in place.  All other non-zero exits are real failures.
+        run: |
+          pytest tests/ -v || (
+            code=$?
+            if [ $code -eq 5 ]; then
+              echo "No tests collected — treating as success."
+              exit 0
+            fi
+            exit $code
+          )

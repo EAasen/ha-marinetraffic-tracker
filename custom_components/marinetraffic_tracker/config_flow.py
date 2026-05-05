@@ -4,11 +4,12 @@ The flow is split into three steps so the UI remains focused:
 
 1. ``user``   — choose tracking mode (radius or bounding box).
 2. ``radius`` / ``box`` — enter the geographic parameters for the chosen mode.
-3. ``timing`` — configure the update interval and stale vessel timeout.
+3. ``timing`` — configure the update interval, stale vessel timeout, and vessel
+   type filter.
 
 An options flow (``MarineTrafficOptionsFlow``) allows users to adjust the
-timing parameters after the integration has been set up without needing to
-remove and re-add it.  Geographic parameters require a re-setup.
+timing/filter parameters after the integration has been set up without needing
+to remove and re-add it.  Geographic parameters require a re-setup.
 """
 from __future__ import annotations
 
@@ -16,13 +17,13 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
     CONF_EAST,
+    CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_NORTH,
@@ -32,14 +33,16 @@ from .const import (
     CONF_TRACKING_MODE,
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
+    DEFAULT_FILTER_VESSEL_TYPES,
     DEFAULT_RADIUS_KM,
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_TRACKING_MODE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
-    TRACKING_MODE_BOX,
+    MIN_UPDATE_INTERVAL,
     TRACKING_MODE_RADIUS,
     TRACKING_MODES,
+    VESSEL_TYPE_LABELS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,16 +96,36 @@ def _box_schema(defaults: dict[str, Any]) -> vol.Schema:
 
 
 def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
+    # Clamp the stored update_interval to the hard floor before rendering the
+    # form, so a YAML-edited entry cannot sneak a sub-floor value into the UI.
+    stored_interval = defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+    try:
+        stored_interval = int(stored_interval)
+    except (TypeError, ValueError):
+        stored_interval = DEFAULT_UPDATE_INTERVAL
+    if stored_interval < MIN_UPDATE_INTERVAL:
+        _LOGGER.warning(
+            "Stored update_interval %d s is below the minimum %d s — clamping to %d s",
+            stored_interval,
+            MIN_UPDATE_INTERVAL,
+            MIN_UPDATE_INTERVAL,
+        )
+        stored_interval = MIN_UPDATE_INTERVAL
+
     return vol.Schema(
         {
             vol.Required(
                 CONF_UPDATE_INTERVAL,
-                default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
-            ): vol.All(int, vol.Range(min=30, max=3600)),
+                default=stored_interval,
+            ): vol.All(int, vol.Range(min=MIN_UPDATE_INTERVAL, max=3600)),
             vol.Required(
                 CONF_STALE_TIMEOUT,
                 default=defaults.get(CONF_STALE_TIMEOUT, DEFAULT_STALE_TIMEOUT),
             ): vol.All(int, vol.Range(min=60, max=86400)),
+            vol.Optional(
+                CONF_FILTER_VESSEL_TYPES,
+                default=defaults.get(CONF_FILTER_VESSEL_TYPES, DEFAULT_FILTER_VESSEL_TYPES),
+            ): vol.All([vol.In(list(VESSEL_TYPE_LABELS))]),
         }
     )
 
@@ -187,7 +210,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_timing(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Collect update interval and stale vessel timeout."""
+        """Collect update interval, stale vessel timeout, and vessel type filter."""
         if user_input is not None:
             self._data.update(user_input)
 
@@ -249,7 +272,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
 # ---------------------------------------------------------------------------
 
 class MarineTrafficOptionsFlow(OptionsFlow):
-    """Allow users to adjust timing settings without removing the integration.
+    """Allow users to adjust timing / filter settings without removing the integration.
 
     Geographic parameters (coordinates, radius, box boundaries) are not
     editable via options because changing them effectively creates a different
