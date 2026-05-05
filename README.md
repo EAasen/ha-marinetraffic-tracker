@@ -15,18 +15,25 @@ A Home Assistant integration that tracks real-time maritime traffic within a spe
 
 ## 📊 Entities & Attributes
 
-The integration creates a `sensor.marinetraffic_count` for the total ships in range, and individual `sensor.vessel_[name]` entities with the following attributes:
+The integration domain is `marinetraffic_tracker`. It creates one **Vessel Count** sensor for the total ships in range, plus individual sensor and device-tracker entities per vessel with the following attributes:
 
 | Attribute | Description |
 | :--- | :--- |
 | `mmsi` | Maritime Mobile Service Identity |
+| `vessel_name` | Name of the vessel |
 | `vessel_type` | Type (Cargo, Tanker, Passenger, etc.) |
-| `status` | Current state (Under way, At anchor, Moored) |
+| `status` | Current navigational state (e.g. Under Way, At Anchor, Moored) |
 | `speed_knots` | Current speed in knots |
-| `heading` | Direction the ship is pointing |
+| `heading` | Direction the ship is pointing (degrees) |
+| `course` | Course over ground (degrees) |
 | `origin` | Port of departure |
 | `destination` | Destination port |
 | `eta` | Estimated Time of Arrival |
+| `imo` | IMO vessel number |
+| `callsign` | Radio callsign |
+| `flag` | Flag state (ISO 2-letter code) |
+| `length` | Vessel length in metres |
+| `last_seen` | Timestamp of last AIS observation |
 
 ## 🚀 Installation
 
@@ -47,8 +54,12 @@ The integration creates a `sensor.marinetraffic_count` for the total ships in ra
 Configuration is handled entirely via the UI:
 1. Go to **Settings** > **Devices & Services**.
 2. Click **Add Integration** and search for **MarineTraffic Tracker**.
-3. Enter your center coordinates (or use Home Assistant defaults) and set your tracking radius (km).
-4. Set the **Update Interval** (Default: 60 seconds).
+3. Choose a tracking mode:
+   - **Radius** — enter centre coordinates and a search radius (km).
+   - **Bounding Box** — enter north/east/south/west boundary coordinates.
+4. Set the **Update Interval** (default: 60 s, minimum: 30 s) and **Stale Vessel Timeout** (default: 600 s).
+
+Timing settings can be adjusted later via **Options** without removing the integration.
 
 ## ⚠️ Disclaimer & Rate Limiting
 
