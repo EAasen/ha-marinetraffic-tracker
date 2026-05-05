@@ -20,9 +20,11 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_EAST,
+    CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_NORTH,
@@ -41,6 +43,7 @@ from .const import (
     TRACKING_MODE_BOX,
     TRACKING_MODE_RADIUS,
     TRACKING_MODES,
+    VESSEL_TYPE_LABELS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -119,6 +122,10 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
                 CONF_STALE_TIMEOUT,
                 default=defaults.get(CONF_STALE_TIMEOUT, DEFAULT_STALE_TIMEOUT),
             ): vol.All(int, vol.Range(min=60, max=86400)),
+            vol.Optional(
+                CONF_FILTER_VESSEL_TYPES,
+                default=defaults.get(CONF_FILTER_VESSEL_TYPES, []),
+            ): cv.multi_select(VESSEL_TYPE_LABELS),
         }
     )
 

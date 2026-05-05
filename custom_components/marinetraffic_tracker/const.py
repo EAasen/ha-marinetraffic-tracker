@@ -42,6 +42,7 @@ CONF_SOUTH = "south"
 CONF_WEST = "west"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_STALE_TIMEOUT = "stale_timeout"
+CONF_FILTER_VESSEL_TYPES = "filter_vessel_types"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -51,6 +52,7 @@ DEFAULT_RADIUS_KM = 50.0
 DEFAULT_UPDATE_INTERVAL = 60     # seconds
 DEFAULT_STALE_TIMEOUT = 600      # seconds (10 minutes)
 DEFAULT_JITTER_MAX = 10          # seconds of random pre-request delay
+DEFAULT_FILTER_VESSEL_TYPES: list[str] = []  # empty = no filter (show all types)
 
 # ---------------------------------------------------------------------------
 # Safety limits — anti-ban rate limiting compliance
@@ -81,6 +83,26 @@ VESSEL_TYPE_ICONS: dict[int, str] = {
     89: "mdi:water",
 }
 DEFAULT_VESSEL_ICON = "mdi:ferry"
+
+# ---------------------------------------------------------------------------
+# Vessel type labels for multi-select filtering (string keys required by HA).
+# This is a curated subset of the most common AIS vessel categories.
+# Keys are string representations of the integer AIS type codes used in
+# VESSEL_TYPE_ICONS and VESSEL_TYPE_MAP (e.g. "70" corresponds to code 70).
+# ---------------------------------------------------------------------------
+VESSEL_TYPE_LABELS: dict[str, str] = {
+    "30": "Fishing",
+    "31": "Towing",
+    "36": "Sailing",
+    "37": "Pleasure Craft",
+    "50": "Pilot Vessel",
+    "51": "Search and Rescue",
+    "52": "Tug",
+    "60": "Passenger",
+    "70": "Cargo",
+    "80": "Tanker",
+    "90": "Other",
+}
 
 # ---------------------------------------------------------------------------
 # Vessel type code → human-readable name (AIS ship type codes)
