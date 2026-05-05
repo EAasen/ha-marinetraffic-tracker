@@ -44,6 +44,7 @@ from .const import (
     DOMAIN,
     VESSEL_TYPE_ICONS,
     VESSEL_TYPE_MAP,
+    vessel_photo_url,
 )
 from .coordinator import MarineTrafficCoordinator
 from .entity import MarineTrafficEntity
@@ -175,6 +176,11 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
         if vessel is None:
             return DEFAULT_VESSEL_ICON
         return VESSEL_TYPE_ICONS.get(vessel.vessel_type, DEFAULT_VESSEL_ICON)
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return a MarineTraffic thumbnail URL for this vessel, or None."""
+        return vessel_photo_url(self._mmsi)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

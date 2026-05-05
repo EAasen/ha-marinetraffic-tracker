@@ -1,4 +1,4 @@
-"""Tests for the MarineTrafficCoordinator — vessel filtering and hard floor enforcement."""
+"""Tests for MarineTrafficCoordinator — vessel filtering, hard floor, and event firing."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -11,50 +11,26 @@ from custom_components.marinetraffic_tracker.const import (
     CONF_FILTER_VESSEL_TYPES,
     CONF_STALE_TIMEOUT,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_STALE_TIMEOUT,
+    DEFAULT_UPDATE_INTERVAL,
     MIN_UPDATE_INTERVAL,
 )
 from custom_components.marinetraffic_tracker.coordinator import MarineTrafficCoordinator
 
+from .conftest import MOCK_VESSEL_CARGO, MOCK_VESSEL_TANKER
+
 # ---------------------------------------------------------------------------
-# Shared test fixtures
+# Shared test helpers
 # ---------------------------------------------------------------------------
 
-_CARGO_VESSEL = VesselData(
-    mmsi="123456789",
-    name="EVER GIVEN",
-    vessel_type=70,  # Cargo
-    latitude=29.98,
-    longitude=32.55,
-    heading=180,
-    course=182,
-    speed=12.5,
-    status="Under Way Using Engine",
-    origin="SUEZ",
-    destination="ROTTERDAM",
-    eta="2026-05-15 14:00",
-    last_seen=datetime.now(timezone.utc),
-)
-
-_TANKER_VESSEL = VesselData(
-    mmsi="987654321",
-    name="SEA TITAN",
-    vessel_type=80,  # Tanker
-    latitude=30.01,
-    longitude=32.60,
-    heading=90,
-    course=91,
-    speed=8.0,
-    status="At Anchor",
-    origin="JEDDAH",
-    destination=None,
-    eta=None,
-    last_seen=datetime.now(timezone.utc),
-)
+_CARGO_VESSEL = MOCK_VESSEL_CARGO
+_TANKER_VESSEL = MOCK_VESSEL_TANKER
 
 
 def _make_entry(options: dict | None = None, data: dict | None = None) -> MagicMock:
     """Return a fake ConfigEntry-like mock with controllable data/options."""
     entry = MagicMock()
+    entry.entry_id = "test_entry_id"
     entry.data = data or {
         CONF_UPDATE_INTERVAL: 60,
         CONF_STALE_TIMEOUT: 600,
@@ -73,17 +49,25 @@ def _make_coordinator(
     *,
     filter_types: list[int] | None = None,
     update_interval: int = 60,
+    stale_timeout: int = DEFAULT_STALE_TIMEOUT,
 ) -> MarineTrafficCoordinator:
     """Build a coordinator with optional vessel type filter and update interval."""
     options: dict = {}
     if filter_types is not None:
-        # Selector stores values as strings
+        # cv.multi_select stores values as strings; mirror that here.
         options[CONF_FILTER_VESSEL_TYPES] = [str(t) for t in filter_types]
     if update_interval != 60:
         options[CONF_UPDATE_INTERVAL] = update_interval
 
     entry = _make_entry(options=options)
+    entry.data[CONF_STALE_TIMEOUT] = stale_timeout
     return MarineTrafficCoordinator(hass, entry, client)
+
+
+async def _refresh(coordinator: MarineTrafficCoordinator) -> None:
+    """Refresh coordinator with jitter disabled for deterministic tests."""
+    with patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep"):
+        await coordinator.async_refresh()
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +128,6 @@ def test_coordinator_respects_valid_interval() -> None:
 async def test_filter_excludes_non_matching_types() -> None:
     """Only vessels whose type is in the filter list should appear in coordinator.data."""
     hass = MagicMock()
-    hass.bus = MagicMock()
     client = AsyncMock()
     client.get_vessels_in_radius = AsyncMock(
         return_value=[_CARGO_VESSEL, _TANKER_VESSEL]
@@ -161,7 +144,6 @@ async def test_filter_excludes_non_matching_types() -> None:
 async def test_empty_filter_includes_all_vessels() -> None:
     """An empty filter list must include all vessel types."""
     hass = MagicMock()
-    hass.bus = MagicMock()
     client = AsyncMock()
     client.get_vessels_in_radius = AsyncMock(
         return_value=[_CARGO_VESSEL, _TANKER_VESSEL]
@@ -178,7 +160,6 @@ async def test_empty_filter_includes_all_vessels() -> None:
 async def test_filter_includes_multiple_types() -> None:
     """Multiple types in the filter must each be included."""
     hass = MagicMock()
-    hass.bus = MagicMock()
     client = AsyncMock()
     client.get_vessels_in_radius = AsyncMock(
         return_value=[_CARGO_VESSEL, _TANKER_VESSEL]
@@ -193,13 +174,12 @@ async def test_filter_includes_multiple_types() -> None:
 
 @pytest.mark.asyncio
 async def test_filter_with_string_values() -> None:
-    """Filter values stored as strings (from SelectSelector) must work correctly."""
+    """Filter values stored as strings (from cv.multi_select) must work correctly."""
     hass = MagicMock()
-    hass.bus = MagicMock()
     client = AsyncMock()
     client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
 
-    # Simulate SelectSelector storage: list of strings
+    # Simulate cv.multi_select storage: list of strings
     entry = _make_entry(options={CONF_FILTER_VESSEL_TYPES: ["70"]})
     coordinator = MarineTrafficCoordinator(hass, entry, client)
     result = await coordinator._async_update_data()
@@ -211,7 +191,6 @@ async def test_filter_with_string_values() -> None:
 async def test_vessel_with_none_destination_does_not_raise() -> None:
     """Vessels with None destination/ETA must not cause exceptions."""
     hass = MagicMock()
-    hass.bus = MagicMock()
     client = AsyncMock()
     client.get_vessels_in_radius = AsyncMock(return_value=[_TANKER_VESSEL])
 
@@ -221,3 +200,94 @@ async def test_vessel_with_none_destination_does_not_raise() -> None:
 
     assert result["987654321"].destination is None
     assert result["987654321"].eta is None
+
+
+# ---------------------------------------------------------------------------
+# Entry/exit event tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_vessel_appears_fires_entered_event() -> None:
+    """A newly appearing vessel must fire exactly one entered event."""
+    hass = MagicMock()
+    fired_events: list[dict] = []
+
+    def capture_event(event_type: str, data: dict) -> None:
+        fired_events.append({"event_type": event_type, "data": data})
+
+    hass.bus = MagicMock()
+    hass.bus.async_fire = capture_event
+
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+
+    coordinator = _make_coordinator(hass, client)
+    await coordinator._async_update_data()
+
+    # Vessel appears
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+    await coordinator._async_update_data()
+
+    entered = [e for e in fired_events if e["event_type"] == "marinetraffic_vessel_entered"]
+    assert len(entered) == 1
+    assert entered[0]["data"]["mmsi"] == _CARGO_VESSEL.mmsi
+    assert entered[0]["data"]["name"] == _CARGO_VESSEL.name
+    assert entered[0]["data"]["vessel_type"] == _CARGO_VESSEL.vessel_type
+
+
+@pytest.mark.asyncio
+async def test_vessel_exits_fires_exited_event() -> None:
+    """A vessel aging past the stale timeout must fire exactly one exited event."""
+    hass = MagicMock()
+    fired_events: list[dict] = []
+
+    def capture_event(event_type: str, data: dict) -> None:
+        fired_events.append({"event_type": event_type, "data": data})
+
+    hass.bus = MagicMock()
+    hass.bus.async_fire = capture_event
+
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client, stale_timeout=600)
+    await coordinator._async_update_data()
+
+    # Vessel disappears and becomes stale
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = (
+        datetime.now(timezone.utc) - timedelta(seconds=700)
+    )
+    await coordinator._async_update_data()
+
+    exited = [e for e in fired_events if e["event_type"] == "marinetraffic_vessel_exited"]
+    assert len(exited) == 1
+    assert exited[0]["data"]["mmsi"] == _CARGO_VESSEL.mmsi
+
+
+@pytest.mark.asyncio
+async def test_repeated_refreshes_do_not_refire_entered() -> None:
+    """Subsequent polls with the same vessel must not fire duplicate entered events."""
+    hass = MagicMock()
+    fired_events: list[dict] = []
+
+    def capture_event(event_type: str, data: dict) -> None:
+        fired_events.append({"event_type": event_type, "data": data})
+
+    hass.bus = MagicMock()
+    hass.bus.async_fire = capture_event
+
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client)
+    # First refresh: vessel enters
+    await coordinator._async_update_data()
+    entered_before = len([e for e in fired_events if e["event_type"] == "marinetraffic_vessel_entered"])
+
+    # Three more refreshes: same vessel, no new entered events
+    for _ in range(3):
+        await coordinator._async_update_data()
+
+    entered_after = len([e for e in fired_events if e["event_type"] == "marinetraffic_vessel_entered"])
+    assert entered_after == entered_before, "No entered event should fire for an already-tracked vessel"

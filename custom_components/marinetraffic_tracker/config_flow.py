@@ -20,11 +20,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers.selector import (
-    SelectSelector,
-    SelectSelectorConfig,
-    SelectSelectorMode,
-)
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_EAST,
@@ -38,7 +34,6 @@ from .const import (
     CONF_TRACKING_MODE,
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
-    DEFAULT_FILTER_VESSEL_TYPES,
     DEFAULT_RADIUS_KM,
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_TRACKING_MODE,
@@ -114,17 +109,8 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
             ): vol.All(int, vol.Range(min=60, max=86400)),
             vol.Optional(
                 CONF_FILTER_VESSEL_TYPES,
-                default=defaults.get(CONF_FILTER_VESSEL_TYPES, DEFAULT_FILTER_VESSEL_TYPES),
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=[
-                        {"value": str(k), "label": v}
-                        for k, v in VESSEL_TYPE_LABELS.items()
-                    ],
-                    multiple=True,
-                    mode=SelectSelectorMode.LIST,
-                )
-            ),
+                default=defaults.get(CONF_FILTER_VESSEL_TYPES, []),
+            ): cv.multi_select(VESSEL_TYPE_LABELS),
         }
     )
 

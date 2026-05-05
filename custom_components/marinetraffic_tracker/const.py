@@ -4,6 +4,36 @@ from __future__ import annotations
 DOMAIN = "marinetraffic_tracker"
 
 # ---------------------------------------------------------------------------
+# Vessel photo URL helper
+# ---------------------------------------------------------------------------
+# MarineTraffic thumbnail URL pattern.  Kept here so it can be updated in one
+# place if the scheme changes.
+_VESSEL_PHOTO_URL_TEMPLATE = (
+    "https://photos.marinetraffic.com/ais/showphoto.aspx?mmsi={mmsi}&size=thumb"
+)
+
+
+def vessel_photo_url(mmsi: str | None) -> str | None:
+    """Return a MarineTraffic thumbnail URL for the given MMSI.
+
+    Returns ``None`` when *mmsi* is ``None``, empty, or not a valid
+    all-digit string so that callers can safely use the result without
+    additional guards.
+
+    Args:
+        mmsi: The vessel MMSI, expected to be a non-empty digit-only string.
+
+    Returns:
+        A thumbnail URL string, or ``None`` if the MMSI is unusable.
+    """
+    if mmsi is None:
+        return None
+    mmsi_str = str(mmsi).strip()
+    if not mmsi_str or not mmsi_str.isdigit():
+        return None
+    return _VESSEL_PHOTO_URL_TEMPLATE.format(mmsi=mmsi_str)
+
+# ---------------------------------------------------------------------------
 # State attribute keys — used by device_tracker and sensor platforms
 # ---------------------------------------------------------------------------
 ATTR_MMSI = "mmsi"
@@ -52,7 +82,7 @@ DEFAULT_RADIUS_KM = 50.0
 DEFAULT_UPDATE_INTERVAL = 60     # seconds
 DEFAULT_STALE_TIMEOUT = 600      # seconds (10 minutes)
 DEFAULT_JITTER_MAX = 10          # seconds of random pre-request delay
-DEFAULT_FILTER_VESSEL_TYPES: list[int] = []  # empty = no filter (show all)
+DEFAULT_FILTER_VESSEL_TYPES: list[str] = []  # empty = no filter (show all types)
 
 # Minimum allowed update interval — hard floor to prevent rate-limit bans.
 MIN_UPDATE_INTERVAL = 30  # seconds
@@ -79,6 +109,26 @@ VESSEL_TYPE_ICONS: dict[int, str] = {
     89: "mdi:water",
 }
 DEFAULT_VESSEL_ICON = "mdi:ferry"
+
+# ---------------------------------------------------------------------------
+# Vessel type labels for multi-select filtering (string keys required by HA).
+# This is a curated subset of the most common AIS vessel categories.
+# Keys are string representations of the integer AIS type codes used in
+# VESSEL_TYPE_ICONS and VESSEL_TYPE_MAP (e.g. "70" corresponds to code 70).
+# ---------------------------------------------------------------------------
+VESSEL_TYPE_LABELS: dict[str, str] = {
+    "30": "Fishing",
+    "31": "Towing",
+    "36": "Sailing",
+    "37": "Pleasure Craft",
+    "50": "Pilot Vessel",
+    "51": "Search and Rescue",
+    "52": "Tug",
+    "60": "Passenger",
+    "70": "Cargo",
+    "80": "Tanker",
+    "90": "Other",
+}
 
 # ---------------------------------------------------------------------------
 # Vessel type code → human-readable name (AIS ship type codes)
@@ -137,20 +187,4 @@ VESSEL_TYPE_MAP: dict[int, str] = {
     93: "Other (hazardous C)",
     94: "Other (hazardous D)",
     99: "Other (no additional information)",
-}
-
-# ---------------------------------------------------------------------------
-# Curated vessel type labels for the UI filter selector (AIS main categories)
-# ---------------------------------------------------------------------------
-VESSEL_TYPE_LABELS: dict[int, str] = {
-    30: "Fishing",
-    31: "Towing",
-    36: "Sailing",
-    37: "Pleasure Craft",
-    50: "Pilot Vessel",
-    52: "Tug",
-    60: "Passenger",
-    70: "Cargo",
-    80: "Tanker",
-    90: "Other",
 }
