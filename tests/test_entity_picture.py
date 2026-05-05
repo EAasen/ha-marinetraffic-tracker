@@ -1,10 +1,8 @@
 """Tests for entity_picture support in MarineTraffic Tracker vessel entities."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, PropertyMock
-
-import pytest
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 from custom_components.marinetraffic_tracker.client import VesselData
 from custom_components.marinetraffic_tracker.const import vessel_photo_url
@@ -12,7 +10,6 @@ from custom_components.marinetraffic_tracker.device_tracker import (
     MarineTrafficVesselTracker,
 )
 from custom_components.marinetraffic_tracker.sensor import MarineTrafficVesselSensor
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,7 +34,7 @@ def _make_vessel(
         origin=None,
         destination=destination,
         eta=eta,
-        last_seen=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+        last_seen=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
     )
 
 
