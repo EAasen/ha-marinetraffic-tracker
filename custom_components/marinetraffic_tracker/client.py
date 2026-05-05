@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
@@ -65,7 +65,7 @@ class VesselData:
     eta: str | None
     imo: str | None = None
     # Timestamp of last successful observation — updated by the coordinator.
-    last_seen: datetime = field(default_factory=datetime.utcnow)
+    last_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def unique_id(self) -> str:

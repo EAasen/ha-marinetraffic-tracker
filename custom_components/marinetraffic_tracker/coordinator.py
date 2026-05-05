@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -124,7 +124,7 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         except Exception as exc:
             raise UpdateFailed(f"Error communicating with MarineTraffic: {exc}") from exc
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Merge fresh observations into the registry
         for vessel in fresh:
