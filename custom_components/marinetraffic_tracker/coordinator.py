@@ -126,10 +126,31 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
 
         now = datetime.now(timezone.utc)
 
+        # Snapshot of MMSIs tracked before this update cycle.
+        previous_mmsis: set[str] = set(self._vessels.keys())
+
         # Merge fresh observations into the registry
         for vessel in fresh:
             vessel.last_seen = now
             self._vessels[vessel.mmsi] = vessel
+
+        # Fire entered events for vessels that are new this cycle.
+        for vessel in fresh:
+            if vessel.mmsi not in previous_mmsis:
+                _LOGGER.debug("Vessel entered: MMSI=%s name=%s", vessel.mmsi, vessel.name)
+                self.hass.bus.async_fire(
+                    "marinetraffic_vessel_entered",
+                    {
+                        "mmsi": vessel.mmsi,
+                        "name": vessel.name,
+                        "vessel_type": vessel.vessel_type,
+                        "latitude": vessel.latitude,
+                        "longitude": vessel.longitude,
+                        "destination": vessel.destination,
+                        "eta": vessel.eta,
+                        "entry_id": self._entry.entry_id,
+                    },
+                )
 
         # Remove vessels not seen within the stale timeout
         stale_cutoff = now - timedelta(seconds=self.stale_timeout_seconds)
@@ -137,7 +158,21 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             mmsi for mmsi, v in self._vessels.items() if v.last_seen < stale_cutoff
         ]
         for mmsi in stale:
+            departed = self._vessels[mmsi]
             _LOGGER.debug("Removing stale vessel MMSI=%s (last seen >%ds ago)", mmsi, self.stale_timeout_seconds)
+            self.hass.bus.async_fire(
+                "marinetraffic_vessel_exited",
+                {
+                    "mmsi": departed.mmsi,
+                    "name": departed.name,
+                    "vessel_type": departed.vessel_type,
+                    "latitude": departed.latitude,
+                    "longitude": departed.longitude,
+                    "destination": departed.destination,
+                    "eta": departed.eta,
+                    "entry_id": self._entry.entry_id,
+                },
+            )
             del self._vessels[mmsi]
 
         _LOGGER.debug(
