@@ -1,7 +1,14 @@
 """Constants for the MarineTraffic Tracker integration."""
+
 from __future__ import annotations
 
 DOMAIN = "marinetraffic_tracker"
+
+# ---------------------------------------------------------------------------
+# HA bus event names
+# ---------------------------------------------------------------------------
+EVENT_VESSEL_ENTERED = "marinetraffic_vessel_entered"
+EVENT_VESSEL_EXITED = "marinetraffic_vessel_exited"
 
 # ---------------------------------------------------------------------------
 # State attribute keys — used by device_tracker and sensor platforms
@@ -42,34 +49,47 @@ CONF_SOUTH = "south"
 CONF_WEST = "west"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_STALE_TIMEOUT = "stale_timeout"
+CONF_FILTER_VESSEL_TYPES = "filter_vessel_types"
 
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
 DEFAULT_TRACKING_MODE = TRACKING_MODE_RADIUS
 DEFAULT_RADIUS_KM = 50.0
-DEFAULT_UPDATE_INTERVAL = 60     # seconds
-DEFAULT_STALE_TIMEOUT = 600      # seconds (10 minutes)
-DEFAULT_JITTER_MAX = 10          # seconds of random pre-request delay
+DEFAULT_UPDATE_INTERVAL = 60  # seconds
+DEFAULT_STALE_TIMEOUT = 600  # seconds (10 minutes)
+DEFAULT_JITTER_MAX = 10  # seconds of random pre-request delay
+# Empty list = track all vessel types; non-empty = allow only listed type codes
+DEFAULT_FILTER_VESSEL_TYPES: list[str] = []
+
+# Minimum safe polling interval — below this value MarineTraffic may ban the IP.
+# Enforced in both the config/options flow schema and the coordinator at runtime.
+MIN_UPDATE_INTERVAL = 30  # seconds
+
+# ---------------------------------------------------------------------------
+# MMSI-based vessel photo URL
+# Returns None for non-9-digit MMSIs (see entity.vessel_photo_url helper).
+# ---------------------------------------------------------------------------
+VESSEL_PHOTO_URL = "https://photos.marinetraffic.com/ais/photos/vessels/small/{mmsi}.jpg"
 
 # ---------------------------------------------------------------------------
 # Vessel type → MDI icon mapping (based on AIS vessel type codes)
 # EXTENSION POINT: add more type codes and icons as needed.
 # ---------------------------------------------------------------------------
 VESSEL_TYPE_ICONS: dict[int, str] = {
-    30: "mdi:fish",          # Fishing
-    36: "mdi:sail-boat",     # Sailing vessel
-    37: "mdi:sail-boat",     # Pleasure craft / recreational sailing
-    60: "mdi:ferry",         # Passenger
+    30: "mdi:fish",  # Fishing
+    36: "mdi:sail-boat",  # Sailing vessel
+    37: "mdi:sail-boat",  # Pleasure craft / recreational sailing
+    60: "mdi:ferry",  # Passenger
     61: "mdi:ferry",
     62: "mdi:ferry",
     63: "mdi:ferry",
     64: "mdi:ferry",
-    70: "mdi:ship-wheel",    # Cargo
+    70: "mdi:ship-wheel",  # Cargo
     71: "mdi:ship-wheel",
     72: "mdi:ship-wheel",
     79: "mdi:ship-wheel",
-    80: "mdi:water",         # Tanker (no dedicated tanker icon in MDI core)
+    80: "mdi:water",  # Tanker (no dedicated tanker icon in MDI core)
     81: "mdi:water",
     89: "mdi:water",
 }

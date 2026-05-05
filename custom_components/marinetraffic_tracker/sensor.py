@@ -11,6 +11,7 @@ each time a previously-unseen vessel appears.  Vessels that age out of the
 registry become unavailable but remain in the entity registry so history is
 preserved.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,7 +25,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .client import VesselData
 from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP
 from .coordinator import MarineTrafficCoordinator
-from .entity import MarineTrafficEntity
+from .entity import MarineTrafficEntity, vessel_photo_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,8 +52,7 @@ async def async_setup_entry(
         if not new_mmsis:
             return
         new_entities = [
-            MarineTrafficVesselSensor(coordinator, entry.entry_id, mmsi)
-            for mmsi in new_mmsis
+            MarineTrafficVesselSensor(coordinator, entry.entry_id, mmsi) for mmsi in new_mmsis
         ]
         known_mmsis.update(new_mmsis)
         async_add_entities(new_entities)
@@ -67,6 +67,7 @@ async def async_setup_entry(
 # ---------------------------------------------------------------------------
 # Global count sensor
 # ---------------------------------------------------------------------------
+
 
 class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
     """Sensor reporting the total number of vessels in the tracking area."""
@@ -100,15 +101,23 @@ class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
 # Per-vessel sensor
 # ---------------------------------------------------------------------------
 
+
 class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
     """Sensor representing a single tracked vessel.
 
     State: current navigational status (e.g. "Under Way Using Engine").
     Attributes: full telemetry for use in map cards and automations.
 
+    Per-vessel sensors are disabled by default in the entity registry to
+    avoid overwhelming users with entities in busy ports.  Users can enable
+    individual vessel sensors manually.
+
     EXTENSION POINT: Add richer attributes here (e.g. draught, destination
     confidence) as the client parser is extended to provide them.
     """
+
+    # Disabled by default — opt-in per vessel to avoid entity explosion.
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -151,6 +160,12 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
         if vessel is None:
             return DEFAULT_VESSEL_ICON
         return VESSEL_TYPE_ICONS.get(vessel.vessel_type, DEFAULT_VESSEL_ICON)
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return a MarineTraffic photo URL for the vessel, or None."""
+        vessel = self._vessel
+        return vessel_photo_url(vessel.mmsi) if vessel else None
 
     @property
     def native_value(self) -> str | None:
