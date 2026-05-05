@@ -86,6 +86,23 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         )
 
     # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _vessel_event_payload(self, vessel: VesselData) -> dict:
+        """Build a consistent, automation-friendly event payload for a vessel."""
+        return {
+            "mmsi": vessel.mmsi,
+            "name": vessel.name,
+            "vessel_type": vessel.vessel_type,
+            "latitude": vessel.latitude,
+            "longitude": vessel.longitude,
+            "destination": vessel.destination,
+            "eta": vessel.eta,
+            "entry_id": self._entry.entry_id,
+        }
+
+    # ------------------------------------------------------------------
     # Core update logic
     # ------------------------------------------------------------------
 
@@ -140,16 +157,7 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 _LOGGER.debug("Vessel entered: MMSI=%s name=%s", vessel.mmsi, vessel.name)
                 self.hass.bus.async_fire(
                     "marinetraffic_vessel_entered",
-                    {
-                        "mmsi": vessel.mmsi,
-                        "name": vessel.name,
-                        "vessel_type": vessel.vessel_type,
-                        "latitude": vessel.latitude,
-                        "longitude": vessel.longitude,
-                        "destination": vessel.destination,
-                        "eta": vessel.eta,
-                        "entry_id": self._entry.entry_id,
-                    },
+                    self._vessel_event_payload(vessel),
                 )
 
         # Remove vessels not seen within the stale timeout
@@ -162,16 +170,7 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             _LOGGER.debug("Removing stale vessel MMSI=%s (last seen >%ds ago)", mmsi, self.stale_timeout_seconds)
             self.hass.bus.async_fire(
                 "marinetraffic_vessel_exited",
-                {
-                    "mmsi": departed.mmsi,
-                    "name": departed.name,
-                    "vessel_type": departed.vessel_type,
-                    "latitude": departed.latitude,
-                    "longitude": departed.longitude,
-                    "destination": departed.destination,
-                    "eta": departed.eta,
-                    "entry_id": self._entry.entry_id,
-                },
+                self._vessel_event_payload(departed),
             )
             del self._vessels[mmsi]
 
