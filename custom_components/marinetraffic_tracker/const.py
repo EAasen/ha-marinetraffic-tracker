@@ -4,6 +4,12 @@ from __future__ import annotations
 DOMAIN = "marinetraffic_tracker"
 
 # ---------------------------------------------------------------------------
+# Home Assistant bus event names
+# ---------------------------------------------------------------------------
+EVENT_VESSEL_ENTERED = "marinetraffic_vessel_entered"
+EVENT_VESSEL_EXITED = "marinetraffic_vessel_exited"
+
+# ---------------------------------------------------------------------------
 # State attribute keys — used by device_tracker and sensor platforms
 # ---------------------------------------------------------------------------
 ATTR_MMSI = "mmsi"
@@ -42,6 +48,9 @@ CONF_SOUTH = "south"
 CONF_WEST = "west"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_STALE_TIMEOUT = "stale_timeout"
+# Multi-select of AIS vessel type labels (str keys) to restrict tracking.
+# Empty list = no filter (all vessel types tracked).
+CONF_FILTER_VESSEL_TYPES = "filter_vessel_types"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -51,6 +60,13 @@ DEFAULT_RADIUS_KM = 50.0
 DEFAULT_UPDATE_INTERVAL = 60     # seconds
 DEFAULT_STALE_TIMEOUT = 600      # seconds (10 minutes)
 DEFAULT_JITTER_MAX = 10          # seconds of random pre-request delay
+DEFAULT_FILTER_VESSEL_TYPES: list[str] = []
+
+# ---------------------------------------------------------------------------
+# Hard floor on the polling interval to prevent MarineTraffic IP bans.
+# Do not set below this value — the coordinator enforces it at runtime too.
+# ---------------------------------------------------------------------------
+MIN_UPDATE_INTERVAL = 30  # seconds
 
 # ---------------------------------------------------------------------------
 # Vessel type → MDI icon mapping (based on AIS vessel type codes)
@@ -133,3 +149,41 @@ VESSEL_TYPE_MAP: dict[int, str] = {
     94: "Other (hazardous D)",
     99: "Other (no additional information)",
 }
+
+# ---------------------------------------------------------------------------
+# Curated vessel type labels for the UI multi-select filter.
+# Keys are str (required by HA selector), values are human-readable names.
+# Intentionally grouped into ~11 common categories rather than all 50+ AIS
+# codes to keep the UI manageable.
+# ---------------------------------------------------------------------------
+VESSEL_TYPE_LABELS: dict[str, str] = {
+    "30": "Fishing",
+    "36": "Sailing",
+    "37": "Pleasure Craft",
+    "50": "Pilot Vessel",
+    "51": "Search and Rescue",
+    "52": "Tug",
+    "60": "Passenger",
+    "70": "Cargo",
+    "80": "Tanker",
+    "35": "Military",
+    "90": "Other",
+}
+
+# ---------------------------------------------------------------------------
+# Vessel photo URL helper.
+# Uses the MarineTraffic public photo endpoint (undocumented; may change).
+# Returns None for invalid / non-numeric MMSI so entity_picture stays None.
+# HA fetches the URL via its media proxy; a 404 shows a broken-image
+# placeholder — not an error or crash.
+# ---------------------------------------------------------------------------
+_VESSEL_PHOTO_URL = (
+    "https://photos.marinetraffic.com/ais/showphoto.aspx?mmsi={mmsi}&size=thumb"
+)
+
+
+def vessel_photo_url(mmsi: str | None) -> str | None:
+    """Return a thumbnail photo URL for *mmsi*, or None if unavailable."""
+    if not mmsi or not mmsi.isdigit():
+        return None
+    return _VESSEL_PHOTO_URL.format(mmsi=mmsi)

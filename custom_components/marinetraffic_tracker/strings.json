@@ -35,11 +35,13 @@
         "description": "Configure how often vessels are fetched and when stale vessels are removed.",
         "data": {
           "update_interval": "Update Interval (seconds)",
-          "stale_timeout": "Stale Vessel Timeout (seconds)"
+          "stale_timeout": "Stale Vessel Timeout (seconds)",
+          "filter_vessel_types": "Vessel Type Filter"
         },
         "data_description": {
           "update_interval": "How often to poll MarineTraffic for vessel data. Minimum 30 seconds to reduce rate-limiting risk.",
-          "stale_timeout": "A vessel not seen for this long will be removed. Default: 600 s (10 minutes)."
+          "stale_timeout": "A vessel not seen for this long will be removed. Default: 600 s (10 minutes).",
+          "filter_vessel_types": "Only track the selected vessel types. Leave empty to track all types."
         }
       }
     },
@@ -57,11 +59,13 @@
         "title": "Update Polling & Cleanup Settings",
         "data": {
           "update_interval": "Update Interval (seconds)",
-          "stale_timeout": "Stale Vessel Timeout (seconds)"
+          "stale_timeout": "Stale Vessel Timeout (seconds)",
+          "filter_vessel_types": "Vessel Type Filter"
         },
         "data_description": {
           "update_interval": "How often to poll MarineTraffic for vessel data. Minimum 30 seconds.",
-          "stale_timeout": "A vessel not seen for this long will be removed."
+          "stale_timeout": "A vessel not seen for this long will be removed.",
+          "filter_vessel_types": "Only track the selected vessel types. Leave empty to track all types."
         }
       }
     }

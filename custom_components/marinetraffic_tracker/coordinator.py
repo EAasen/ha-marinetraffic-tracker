@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .client import MarineTrafficClient, VesselData
 from .const import (
     CONF_EAST,
+    CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_NORTH,
@@ -28,11 +29,13 @@ from .const import (
     CONF_TRACKING_MODE,
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
+    DEFAULT_FILTER_VESSEL_TYPES,
     DEFAULT_JITTER_MAX,
     DEFAULT_RADIUS_KM,
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    MIN_UPDATE_INTERVAL,
     TRACKING_MODE_RADIUS,
 )
 
@@ -57,12 +60,24 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         # Running vessel registry — persists across updates.
         self._vessels: dict[str, VesselData] = {}
 
-        update_interval = timedelta(
-            seconds=entry.options.get(
-                CONF_UPDATE_INTERVAL,
-                entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
-            )
+        raw_interval = entry.options.get(
+            CONF_UPDATE_INTERVAL,
+            entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
         )
+        try:
+            interval_seconds = int(raw_interval)
+        except (TypeError, ValueError):
+            interval_seconds = DEFAULT_UPDATE_INTERVAL
+
+        if interval_seconds < MIN_UPDATE_INTERVAL:
+            _LOGGER.warning(
+                "Configured update_interval %d s is below the minimum %d s — clamping.",
+                interval_seconds,
+                MIN_UPDATE_INTERVAL,
+            )
+            interval_seconds = MIN_UPDATE_INTERVAL
+
+        update_interval = timedelta(seconds=interval_seconds)
 
         super().__init__(
             hass,
@@ -84,6 +99,23 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 self._entry.data.get(CONF_STALE_TIMEOUT, DEFAULT_STALE_TIMEOUT),
             )
         )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _vessel_event_payload(self, vessel: VesselData) -> dict:
+        """Build a consistent, automation-friendly event payload for a vessel."""
+        return {
+            "mmsi": vessel.mmsi,
+            "name": vessel.name,
+            "vessel_type": vessel.vessel_type,
+            "latitude": vessel.latitude,
+            "longitude": vessel.longitude,
+            "destination": vessel.destination,
+            "eta": vessel.eta,
+            "entry_id": self._entry.entry_id,
+        }
 
     # ------------------------------------------------------------------
     # Core update logic
@@ -124,12 +156,36 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         except Exception as exc:
             raise UpdateFailed(f"Error communicating with MarineTraffic: {exc}") from exc
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
+
+        # Snapshot of MMSIs tracked before this update cycle.
+        previous_mmsis: set[str] = set(self._vessels.keys())
+
+        # Vessel type filter — empty set means no filtering (all types allowed).
+        filter_types: set[str] = set(
+            config.get(CONF_FILTER_VESSEL_TYPES, DEFAULT_FILTER_VESSEL_TYPES)
+        )
 
         # Merge fresh observations into the registry
         for vessel in fresh:
+            if filter_types and str(vessel.vessel_type) not in filter_types:
+                _LOGGER.debug(
+                    "Skipping vessel MMSI=%s type=%d (filtered out)",
+                    vessel.mmsi,
+                    vessel.vessel_type,
+                )
+                continue
             vessel.last_seen = now
             self._vessels[vessel.mmsi] = vessel
+
+        # Fire entered events only for vessels that passed the filter and are new.
+        for vessel in fresh:
+            if vessel.mmsi in self._vessels and vessel.mmsi not in previous_mmsis:
+                _LOGGER.debug("Vessel entered: MMSI=%s name=%s", vessel.mmsi, vessel.name)
+                self.hass.bus.async_fire(
+                    "marinetraffic_vessel_entered",
+                    self._vessel_event_payload(vessel),
+                )
 
         # Remove vessels not seen within the stale timeout
         stale_cutoff = now - timedelta(seconds=self.stale_timeout_seconds)
@@ -137,7 +193,16 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             mmsi for mmsi, v in self._vessels.items() if v.last_seen < stale_cutoff
         ]
         for mmsi in stale:
-            _LOGGER.debug("Removing stale vessel MMSI=%s (last seen >%ds ago)", mmsi, self.stale_timeout_seconds)
+            departed = self._vessels[mmsi]
+            _LOGGER.debug(
+                "Removing stale vessel MMSI=%s (last seen >%ds ago)",
+                mmsi,
+                self.stale_timeout_seconds,
+            )
+            self.hass.bus.async_fire(
+                "marinetraffic_vessel_exited",
+                self._vessel_event_payload(departed),
+            )
             del self._vessels[mmsi]
 
         _LOGGER.debug(
