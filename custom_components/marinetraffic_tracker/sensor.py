@@ -108,7 +108,14 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
 
     EXTENSION POINT: Add richer attributes here (e.g. draught, destination
     confidence) as the client parser is extended to provide them.
+
+    Disabled by default to prevent entity-list explosion in busy ports or
+    high-traffic areas.  Users can enable individual vessel entities manually
+    via the Home Assistant entity registry.
     """
+
+    # Disabled by default — prevents entity explosion in high-traffic areas.
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,

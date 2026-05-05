@@ -88,6 +88,13 @@ DEFAULT_FILTER_VESSEL_TYPES: list[str] = []  # empty = no filter (show all types
 MIN_UPDATE_INTERVAL = 30  # seconds
 
 # ---------------------------------------------------------------------------
+# Safety limits — anti-ban rate limiting compliance
+# Polling faster than 30s risks MarineTraffic banning the user's IP address.
+# This constant is the hard floor enforced both in config schema and at runtime.
+# ---------------------------------------------------------------------------
+MIN_UPDATE_INTERVAL = 30         # seconds — never poll faster than this
+
+# ---------------------------------------------------------------------------
 # Vessel type → MDI icon mapping (based on AIS vessel type codes)
 # EXTENSION POINT: add more type codes and icons as needed.
 # ---------------------------------------------------------------------------
