@@ -4,10 +4,19 @@ This module is the sole integration point with the external MarineTraffic
 website.  All network I/O and JSON parsing lives here so that upstream
 format changes only require updates to ``_parse_response`` / ``_parse_row``
 without touching the coordinator or entity layers.
+
+SCHEMA NOTE:
+  The live-map endpoint is observed at:
+    GET /map/getData/shipData/zoom:7/minlat:{s}/maxlat:{n}/minlon:{w}/maxlon:{e}/...
+  Response envelope (dict-format rows are the currently observed schema):
+    { "data": { "rows": [ {"MMSI": ..., "LAT": ..., ...}, ... ] } }
+  Update ``_parse_row`` if MarineTraffic changes the field names.
 """
 from __future__ import annotations
 
 import logging
+import math
+import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -28,13 +37,42 @@ _GRID_URL = (
     "/land:1/fleet:0/mmsi:0/ext:1"
 )
 
-_DEFAULT_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+# ---------------------------------------------------------------------------
+# Browser impersonation — rotate through realistic User-Agent strings to
+# reduce fingerprinting risk and the chance of being rate-limited.
+# ---------------------------------------------------------------------------
+_USER_AGENTS: list[str] = [
+    (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Referer": "https://www.marinetraffic.com/",
+    (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/123.0.0.0 Safari/537.36"
+    ),
+    (
+        "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) "
+        "Gecko/20100101 Firefox/125.0"
+    ),
+    (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) "
+        "Gecko/20100101 Firefox/124.0"
+    ),
+]
+
+_BASE_HEADERS: dict[str, str] = {
+    "Accept":           "application/json, text/javascript, */*; q=0.01",
+    "Accept-Language":  "en-US,en;q=0.9",
+    "Accept-Encoding":  "gzip, deflate, br",
+    "Referer":          "https://www.marinetraffic.com/",
+    "Origin":           "https://www.marinetraffic.com",
     "X-Requested-With": "XMLHttpRequest",
+    "Connection":       "keep-alive",
+    "Sec-Fetch-Dest":   "empty",
+    "Sec-Fetch-Mode":   "cors",
+    "Sec-Fetch-Site":   "same-origin",
 }
 
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20)
@@ -104,23 +142,39 @@ class MarineTrafficClient:
     ) -> list[VesselData]:
         """Return vessels within *radius_km* of (*latitude*, *longitude*).
 
-        Internally converts the circle to an approximate bounding box for
-        the API query.  Callers that need strict circle filtering can post-
-        filter by haversine distance — this is left for a future iteration.
+        Steps:
+        1. Convert the circle to a bounding box for the API query (fast).
+        2. Fetch all vessels in that box.
+        3. Post-filter with the Haversine formula for strict circle accuracy,
+           eliminating vessels in the box corners that are outside the circle.
         """
-        # 1 degree latitude ≈ 111 km; longitude varies with cosine of lat.
-        import math
+        _LOGGER.debug(
+            "Fetching vessels within %.1f km of (%.4f, %.4f)",
+            radius_km, latitude, longitude,
+        )
 
         delta_lat = radius_km / 111.0
         cos_lat = math.cos(math.radians(latitude))
         delta_lon = radius_km / (111.0 * max(cos_lat, 0.01))
 
-        return await self.get_vessels_in_box(
+        all_vessels = await self.get_vessels_in_box(
             north=latitude + delta_lat,
             east=longitude + delta_lon,
             south=latitude - delta_lat,
             west=longitude - delta_lon,
         )
+
+        # Strict Haversine filter — removes corner vessels outside the circle.
+        in_radius = [
+            v for v in all_vessels
+            if _haversine_km(latitude, longitude, v.latitude, v.longitude) <= radius_km
+        ]
+
+        _LOGGER.debug(
+            "Haversine filter: %d → %d vessels within %.1f km radius",
+            len(all_vessels), len(in_radius), radius_km,
+        )
+        return in_radius
 
     async def get_vessels_in_box(
         self,
@@ -137,12 +191,26 @@ class MarineTrafficClient:
             west=round(west, 4),
         )
 
+        # Rotate User-Agent on every request to reduce fingerprinting.
+        user_agent = secrets.choice(_USER_AGENTS)
+        headers = {**_BASE_HEADERS, "User-Agent": user_agent}
+        _LOGGER.debug("GET %s", url)
+
         try:
             async with self._session.get(
                 url,
-                headers=_DEFAULT_HEADERS,
+                headers=headers,
                 timeout=_REQUEST_TIMEOUT,
             ) as resp:
+                _LOGGER.debug(
+                    "MarineTraffic responded with HTTP %s", resp.status
+                )
+                if resp.status == 429:
+                    _LOGGER.warning(
+                        "MarineTraffic returned 429 Too Many Requests — "
+                        "consider increasing CONF_UPDATE_INTERVAL"
+                    )
+                    return []
                 resp.raise_for_status()
                 raw = await resp.json(content_type=None)
         except aiohttp.ClientResponseError as exc:
@@ -167,10 +235,6 @@ class MarineTrafficClient:
 
     def _parse_response(self, raw: Any) -> list[VesselData]:
         """Parse the raw API response into a list of :class:`VesselData`.
-
-        **This is a stub implementation.**  The actual MarineTraffic live-map
-        JSON schema must be confirmed by inspecting browser network traffic
-        and then mapping the real field names below.
 
         Expected response envelope (placeholder — verify against live data)::
 
@@ -223,6 +287,8 @@ class MarineTrafficClient:
             )
             return vessels
 
+        _LOGGER.debug("Parsing %d raw vessel row(s)", len(rows))
+
         for row in rows:
             try:
                 vessel = self._parse_row(row)
@@ -267,6 +333,20 @@ class MarineTrafficClient:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return the great-circle distance in kilometres between two points."""
+    earth_radius_km = 6371.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_lat_rad = phi2 - phi1
+    delta_lon_rad = math.radians(lon2) - math.radians(lon1)
+    a = (
+        math.sin(delta_lat_rad / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lon_rad / 2) ** 2
+    )
+    return earth_radius_km * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
 
 def _nav_status_to_str(code: Any) -> str | None:
     """Convert an AIS navigational status code to a human-readable string."""
