@@ -105,7 +105,14 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
     mmsi, vessel_name, vessel_type, speed_knots, heading, course, status,
     origin, destination, eta, latitude, longitude, imo, callsign, length,
     flag, last_seen.
+
+    Disabled by default to prevent entity-list explosion in busy ports or
+    high-traffic areas.  Users can enable individual vessel entities manually
+    via the Home Assistant entity registry.
     """
+
+    # Disabled by default — prevents entity explosion in high-traffic areas.
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
