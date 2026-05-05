@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Ruff
+        run: pip install ruff
+      - name: Run Ruff
+        run: |
+          TARGETS="custom_components/"
+          [ -d tests ] && TARGETS="$TARGETS tests/"
+          ruff check $TARGETS
+
+  hassfest:
+    name: HASSfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install pytest pytest-homeassistant-custom-component
+      - name: Run pytest
+        run: |
+          pytest tests/ -v || {
+            exit_code=$?
+            [ $exit_code -eq 5 ] && echo "No tests collected -- skipping" && exit 0
+            exit $exit_code
+          }
