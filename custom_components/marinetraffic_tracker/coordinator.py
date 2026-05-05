@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .client import MarineTrafficClient, VesselData
 from .const import (
     CONF_EAST,
+    CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_NORTH,
@@ -156,6 +157,20 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 )
         except Exception as exc:
             raise UpdateFailed(f"Error communicating with MarineTraffic: {exc}") from exc
+
+        # Apply vessel type filter if configured.
+        # Stored values may be strings (from the SelectSelector) or ints; normalise to int.
+        raw_filter = config.get(CONF_FILTER_VESSEL_TYPES, [])
+        allowed_types: list[int] = [int(t) for t in raw_filter] if raw_filter else []
+        if allowed_types:
+            before = len(fresh)
+            fresh = [v for v in fresh if v.vessel_type in allowed_types]
+            _LOGGER.debug(
+                "Vessel type filter applied: %d → %d vessel(s) (allowed types: %s)",
+                before,
+                len(fresh),
+                allowed_types,
+            )
 
         now = datetime.now(timezone.utc)
 

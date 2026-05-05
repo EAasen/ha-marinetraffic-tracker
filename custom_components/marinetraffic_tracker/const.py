@@ -84,6 +84,9 @@ DEFAULT_STALE_TIMEOUT = 600      # seconds (10 minutes)
 DEFAULT_JITTER_MAX = 10          # seconds of random pre-request delay
 DEFAULT_FILTER_VESSEL_TYPES: list[str] = []  # empty = no filter (show all types)
 
+# Minimum allowed update interval — hard floor to prevent rate-limit bans.
+MIN_UPDATE_INTERVAL = 30  # seconds
+
 # ---------------------------------------------------------------------------
 # Safety limits — anti-ban rate limiting compliance
 # Polling faster than 30s risks MarineTraffic banning the user's IP address.
