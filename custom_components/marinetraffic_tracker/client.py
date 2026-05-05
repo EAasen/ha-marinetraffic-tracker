@@ -144,10 +144,8 @@ class MarineTrafficClient:
            eliminating vessels in the box corners that are outside the circle.
         """
         _LOGGER.debug(
-            "Fetching vessels within %.1f km of (%.4f, %.4f)",
+            "Fetching vessels within %.1f km of configured tracking centre",
             radius_km,
-            latitude,
-            longitude,
         )
 
         delta_lat = radius_km / 111.0
