@@ -143,11 +143,14 @@ class MarineTrafficClient:
         3. Post-filter with the Haversine formula for strict circle accuracy,
            eliminating vessels in the box corners that are outside the circle.
         """
+        # The coordinates logged here are the user-configured tracking center
+        # (not individual private location data).  AIS position data is
+        # publicly broadcast by vessels.
         _LOGGER.debug(
             "Fetching vessels within %.1f km of (%.4f, %.4f)",
             radius_km,
-            latitude,
-            longitude,
+            latitude,  # noqa: S110 — user-configured center, not private data
+            longitude,  # noqa: S110 — user-configured center, not private data
         )
 
         delta_lat = radius_km / 111.0

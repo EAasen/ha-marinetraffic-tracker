@@ -73,6 +73,11 @@ EVENT_VESSEL_EXITED = "marinetraffic_vessel_exited"
 # ---------------------------------------------------------------------------
 # MMSI-based vessel photo URL helper
 # MarineTraffic exposes vessel photos at a deterministic URL.
+# NOTE: MarineTraffic's URL path uses "shipid" as the query segment name,
+# but the value supplied is the vessel's MMSI (Maritime Mobile Service
+# Identity).  The placeholder in the template string below is named {mmsi}
+# for clarity in the Python code; it is substituted into the "shipid:" path
+# segment at runtime.
 # The helper returns None for invalid/missing MMSI values so callers can
 # fall back to the entity icon gracefully.
 # ---------------------------------------------------------------------------
