@@ -1,0 +1,69 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "MarineTraffic Tracker",
+        "description": "Choose how to define your vessel tracking area.",
+        "data": {
+          "tracking_mode": "Tracking Mode"
+        },
+        "data_description": {
+          "tracking_mode": "Radius: track vessels within a circular area centred on a point. Box: track vessels within a geographic bounding box."
+        }
+      },
+      "radius": {
+        "title": "Radius Tracking Area",
+        "description": "Enter the centre of your tracking circle and the radius.",
+        "data": {
+          "latitude": "Centre Latitude",
+          "longitude": "Centre Longitude",
+          "radius_km": "Radius (km)"
+        }
+      },
+      "box": {
+        "title": "Bounding Box Tracking Area",
+        "description": "Enter the north/east/south/west boundaries of your tracking area.",
+        "data": {
+          "north": "North Latitude",
+          "east": "East Longitude",
+          "south": "South Latitude",
+          "west": "West Longitude"
+        }
+      },
+      "timing": {
+        "title": "Polling & Cleanup Settings",
+        "description": "Configure how often vessels are fetched and when stale vessels are removed.",
+        "data": {
+          "update_interval": "Update Interval (seconds)",
+          "stale_timeout": "Stale Vessel Timeout (seconds)"
+        },
+        "data_description": {
+          "update_interval": "How often to poll MarineTraffic for vessel data. Minimum 30 seconds to reduce rate-limiting risk.",
+          "stale_timeout": "A vessel not seen for this long will be removed. Default: 600 s (10 minutes)."
+        }
+      }
+    },
+    "error": {
+      "south_gte_north": "South latitude must be strictly less than north latitude.",
+      "west_gte_east": "West longitude must be strictly less than east longitude."
+    },
+    "abort": {
+      "already_configured": "This tracking area is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update Polling & Cleanup Settings",
+        "data": {
+          "update_interval": "Update Interval (seconds)",
+          "stale_timeout": "Stale Vessel Timeout (seconds)"
+        },
+        "data_description": {
+          "update_interval": "How often to poll MarineTraffic for vessel data. Minimum 30 seconds.",
+          "stale_timeout": "A vessel not seen for this long will be removed."
+        }
+      }
+    }
+  }
+}

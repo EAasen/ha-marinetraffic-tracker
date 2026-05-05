@@ -33,12 +33,12 @@ The integration creates a `sensor.marinetraffic_count` for the total ships in ra
 ### Option 1: HACS (Recommended)
 1. Open **HACS** in Home Assistant.
 2. Click the three dots in the top right and select **Custom repositories**.
-3. Add `https://github.com/[Your-Username]/ha-marinetraffic-tracker` with category **Integration**.
+3. Add `https://github.com/EAasen/ha-marinetraffic-tracker` with category **Integration**.
 4. Click **Install**.
 5. Restart Home Assistant.
 
 ### Option 2: Manual
-1. Download the `custom_components/marinetraffic` folder.
+1. Download the `custom_components/marinetraffic_tracker` folder.
 2. Copy it into your Home Assistant `/config/custom_components/` directory.
 3. Restart Home Assistant.
 
