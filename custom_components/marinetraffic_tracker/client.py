@@ -306,6 +306,13 @@ class MarineTrafficClient:
         raw_name = str(row.get("SHIPNAME", "")).strip()
         name = raw_name or f"Vessel {mmsi}"
 
+        raw_length = row.get("LENGTH")
+        length: int | None = None
+        try:
+            length = int(raw_length) if raw_length is not None else None
+        except (ValueError, TypeError):
+            length = None
+
         return VesselData(
             mmsi=mmsi,
             name=name,
@@ -320,6 +327,9 @@ class MarineTrafficClient:
             destination=row.get("DESTINATION") or None,
             eta=str(row["ETA_CALC"]) if row.get("ETA_CALC") else None,
             imo=str(row["IMO"]) if row.get("IMO") else None,
+            flag=str(row["FLAG"]).strip() or None if row.get("FLAG") else None,
+            callsign=str(row["CALLSIGN"]).strip() or None if row.get("CALLSIGN") else None,
+            length=length,
         )
 
 
@@ -354,6 +364,13 @@ def _nav_status_to_str(code: Any) -> str | None:
         6: "Aground",
         7: "Engaged In Fishing",
         8: "Under Way Sailing",
+        9: "Reserved for High Speed Craft",
+        10: "Reserved for Wing in Ground",
+        11: "Reserved",
+        12: "Reserved",
+        13: "Reserved",
+        14: "AIS-SART / MOB-AIS / EPIRB-AIS",
+        15: "Undefined",
     }
     if code is None:
         return None
