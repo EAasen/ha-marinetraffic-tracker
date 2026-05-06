@@ -25,22 +25,32 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .client import VesselData
 from .const import (
     ATTR_BEAM,
+    ATTR_BUSIEST_DAY,
+    ATTR_BUSIEST_HOUR,
     ATTR_CALLSIGN,
     ATTR_COURSE,
+    ATTR_DAILY_COUNTS,
     ATTR_DESTINATION,
     ATTR_DRAUGHT,
     ATTR_ETA,
     ATTR_FLAG,
     ATTR_HEADING,
+    ATTR_HOURLY_COUNTS,
     ATTR_IMO,
+    ATTR_LARGEST_VESSEL,
     ATTR_LAST_SEEN,
     ATTR_LENGTH,
+    ATTR_LONGEST_RESIDENT,
     ATTR_MMSI,
+    ATTR_MOST_FREQUENT_VISITOR,
     ATTR_ORIGIN,
     ATTR_POSITION_HISTORY,
     ATTR_RATE_OF_TURN,
+    ATTR_SMALLEST_VESSEL,
     ATTR_SPEED,
+    ATTR_SPEED_RECORD,
     ATTR_STATUS,
+    ATTR_TOTAL_VESSELS_SEEN,
     ATTR_VESSEL_NAME,
     ATTR_VESSEL_TYPE,
     DEFAULT_VESSEL_ICON,
@@ -66,8 +76,11 @@ async def async_setup_entry(
     # Track which MMSIs we have already created entities for.
     known_mmsis: set[str] = set()
 
-    # Always add the global count sensor immediately.
-    async_add_entities([MarineTrafficCountSensor(coordinator, entry.entry_id)])
+    # Always add the global count sensor and statistics sensor immediately.
+    async_add_entities([
+        MarineTrafficCountSensor(coordinator, entry.entry_id),
+        MarineTrafficStatisticsSensor(coordinator, entry.entry_id),
+    ])
 
     @callback
     def _handle_coordinator_update() -> None:
@@ -252,4 +265,62 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
             ATTR_BEAM: vessel.beam,
             ATTR_LAST_SEEN: vessel.last_seen.isoformat(),
             ATTR_POSITION_HISTORY: self.coordinator.get_position_history(self._mmsi),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Statistics / highscore sensor
+# ---------------------------------------------------------------------------
+
+
+class MarineTrafficStatisticsSensor(MarineTrafficEntity, SensorEntity):
+    """Sensor exposing historical maritime statistics for the tracked area.
+
+    State: total number of unique vessels ever seen in the tracking area.
+    Attributes:
+        most_frequent_visitor   — vessel with the highest entry count.
+        longest_resident        — vessel with the most cumulative time in zone.
+        speed_record            — highest speed ever recorded in the area.
+        largest_vessel          — largest ship by length seen in the area.
+        smallest_vessel         — smallest ship by length seen in the area.
+        busiest_hour            — hour of the day (0–23) with most traffic.
+        busiest_day             — weekday (0=Mon … 6=Sun) with most traffic.
+        hourly_counts           — list of 24 observation counts, one per hour.
+        daily_counts            — list of 7 observation counts, one per weekday.
+        total_vessels_seen      — total unique vessels ever observed (= state).
+    """
+
+    _attr_icon = "mdi:trophy"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = "vessels"
+
+    def __init__(
+        self,
+        coordinator: MarineTrafficCoordinator,
+        entry_id: str,
+    ) -> None:
+        super().__init__(coordinator, entry_id)
+        self._attr_unique_id = f"{entry_id}_statistics"
+        self._attr_name = "Maritime Statistics"
+
+    @property
+    def native_value(self) -> int:
+        """Return the total number of unique vessels ever observed."""
+        return len(self.coordinator.statistics.visit_counts)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return all historical statistics as a flat attribute dict."""
+        stats_dict = self.coordinator.statistics.to_dict()
+        return {
+            ATTR_MOST_FREQUENT_VISITOR: stats_dict["most_frequent_visitor"],
+            ATTR_LONGEST_RESIDENT: stats_dict["longest_resident"],
+            ATTR_SPEED_RECORD: stats_dict["speed_record"],
+            ATTR_LARGEST_VESSEL: stats_dict["largest_vessel"],
+            ATTR_SMALLEST_VESSEL: stats_dict["smallest_vessel"],
+            ATTR_BUSIEST_HOUR: stats_dict["busiest_hour"],
+            ATTR_BUSIEST_DAY: stats_dict["busiest_day"],
+            ATTR_HOURLY_COUNTS: stats_dict["hourly_counts"],
+            ATTR_DAILY_COUNTS: stats_dict["daily_counts"],
+            ATTR_TOTAL_VESSELS_SEEN: stats_dict["total_vessels_seen"],
         }
