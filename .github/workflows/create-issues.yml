@@ -12,283 +12,60 @@ permissions:
 
 jobs:
   create-issues:
-    name: Create non-blocking issues from PR #19
+    name: Create non-blocking issues from PR 19
     runs-on: ubuntu-latest
     steps:
-      - name: Create Issue A — Enhancement draught/rate_of_turn/beam
+      - uses: actions/checkout@v4
+
+      - name: Create Issue A - Enhancement draught/rate_of_turn/beam
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          # Skip if already exists
-          existing=$(gh issue list --repo "$REPO" --search "Enhancement: add draught, rate_of_turn, beam fields to VesselData" --json number --jq '.[0].number' 2>/dev/null || true)
+          existing=$(gh issue list --repo "$REPO" \
+            --search "Enhancement: add draught, rate_of_turn, beam fields to VesselData" \
+            --json number --jq '.[0].number' 2>/dev/null || true)
           if [ -n "$existing" ]; then
             echo "Issue A already exists (#$existing), skipping."
-            exit 0
+          else
+            gh issue create \
+              --repo "$REPO" \
+              --title "Enhancement: add draught, rate_of_turn, beam fields to VesselData" \
+              --label "enhancement" \
+              --body-file ".github/ISSUE_BODIES/issue-a.md"
           fi
-          gh issue create \
-            --repo "$REPO" \
-            --title "Enhancement: add draught, rate_of_turn, beam fields to VesselData" \
-            --label "enhancement" \
-            --body "$(cat <<'BODY'
-## Summary
 
-Three standard AIS fields are currently absent from `VesselData` and the rest of the integration.  Adding them would make the integration more useful for routing automations and vessel-size filtering.
-
----
-
-## Fields to add
-
-| Field | AIS Message type(s) | Raw API key (expected) | Description |
-|---|---|---|---|
-| `draught` | Type 5 | `DRAUGHT` | Vessel draught in **decimetres** (manually entered by crew). Useful for shallow-water automations. |
-| `rate_of_turn` | Type 1, 2, 3 | `ROT` | Rate of turn in **degrees/minute** (positive = turning right). Values: –128 = no turn info; –127/+127 = turning at > 5°/30 s. Useful for predicting vessel trajectory in automations. |
-| `beam` | Type 5, Type 19 | Derived from antenna offsets `A`, `B`, `C`, `D` | Vessel beam (width) in metres. MarineTraffic does not expose beam directly; it must be derived as `C + D` from the AIS antenna-position offsets reported in Message 5. |
-
----
-
-## Work required
-
-### 1. `client.py` — `VesselData`
-- Add three new optional fields to the `@dataclass`:
-  ```python
-  draught: float | None = None      # decimetres
-  rate_of_turn: int | None = None   # degrees/minute; –128 = no info
-  beam: int | None = None           # metres (derived from C + D offsets)
-  ```
-
-### 2. `client.py` — `_parse_row`
-- Parse `DRAUGHT` → `float` (with safe fallback for `None`/invalid).
-- Parse `ROT` → `int` (with safe fallback; –128 = "no turn info", keep as `None` or represent explicitly).
-- Parse antenna offsets `C` and `D` → `beam = int(C) + int(D)` with safe fallback.
-- Update the `_parse_response` docstring example to include the new keys.
-
-### 3. `const.py` — new `ATTR_*` constants
-```python
-ATTR_DRAUGHT = "draught"
-ATTR_RATE_OF_TURN = "rate_of_turn"
-ATTR_BEAM = "beam"
-```
-
-### 4. `sensor.py` — `extra_state_attributes`
-- Import and expose `ATTR_DRAUGHT`, `ATTR_RATE_OF_TURN`, `ATTR_BEAM` in `MarineTrafficVesselSensor.extra_state_attributes`.
-
-### 5. `device_tracker.py` — `extra_state_attributes`
-- Same imports and additions as above so both entity types remain consistent.
-
-### 6. `README.md`
-- Add the three fields to the attribute reference table.
-
-### 7. Tests
-- Extend `tests/test_client.py` to cover:
-  - `_parse_row` correctly parses `DRAUGHT`, `ROT`, `C`+`D` offsets.
-  - Safe fallbacks for missing / non-numeric values.
-- Extend `tests/test_sensor_attributes.py` to verify both sensor and tracker expose the new keys.
-
----
-
-## Acceptance criteria
-- [ ] `draught`, `rate_of_turn`, `beam` fields present in `VesselData`.
-- [ ] `_parse_row` populates all three from the raw API dict with safe fallbacks.
-- [ ] Three new `ATTR_*` constants added to `const.py`.
-- [ ] Both `sensor.py` and `device_tracker.py` expose the new attributes.
-- [ ] `README.md` attribute table updated.
-- [ ] All new code covered by tests; all existing tests still pass.
-- [ ] Ruff, HASSfest, and Pytest all green.
-
----
-
-## Notes
-- `beam` is **not** a directly-transmitted AIS field; it is derived from the four antenna-position offsets (A fore, B aft, C starboard, D port) from Message 5.  MarineTraffic may expose these as `C` and `D` separately — verify against live data (see also Issue C).
-- `rate_of_turn` value –128 (0x80) means "no turn information available". Consider mapping this to `None` rather than exposing the raw sentinel to users.
-- `draught` is a manual entry from the vessel's crew and may be inaccurate or missing for many vessels.
-
-_Originated from the non-blocking items noted in PR #19._
-BODY
-)"
-
-      - name: Create Issue B — VesselData immutable docstring bug
+      - name: Create Issue B - VesselData immutable docstring bug
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          existing=$(gh issue list --repo "$REPO" --search "VesselData \"Immutable\" docstring vs mutable last_seen mutation" --json number --jq '.[0].number' 2>/dev/null || true)
+          existing=$(gh issue list --repo "$REPO" \
+            --search "VesselData Immutable docstring vs mutable last_seen mutation" \
+            --json number --jq '.[0].number' 2>/dev/null || true)
           if [ -n "$existing" ]; then
             echo "Issue B already exists (#$existing), skipping."
-            exit 0
+          else
+            gh issue create \
+              --repo "$REPO" \
+              --title 'Bug: VesselData "Immutable" docstring vs mutable last_seen mutation' \
+              --label "bug" \
+              --body-file ".github/ISSUE_BODIES/issue-b.md"
           fi
-          gh issue create \
-            --repo "$REPO" \
-            --title "Bug: VesselData \"Immutable\" docstring vs mutable last_seen mutation" \
-            --label "bug" \
-            --body "$(cat <<'BODY'
-## Summary
 
-`VesselData` is documented as an *"Immutable snapshot"* in its class docstring, but `coordinator.py` mutates the `last_seen` field directly on the live object.  This creates a misleading contract and a potential source of subtle bugs if the dataclass is ever made `frozen=True` or if code assumes snapshots are safe to share without copying.
-
----
-
-## Reproduction
-
-**`client.py` — `VesselData` docstring (line ~78):**
-```python
-@dataclass
-class VesselData:
-    """Immutable snapshot of a single vessel's state.
-    ...
-    """
-```
-
-**`coordinator.py` — `_async_update_data` (line ~183):**
-```python
-for vessel in fresh:
-    vessel.last_seen = now          # ← direct mutation of a "snapshot"
-    self._vessels[vessel.mmsi] = vessel
-```
-
-The mutation happens *before* the object is stored in `self._vessels`, so at this exact moment the coordinator has already given the same object reference to the caller if `get_vessels_in_radius` returned it.  In the current single-threaded async design this is harmless, but the docstring promise is broken.
-
----
-
-## Options
-
-### Option 1 — Remove the "Immutable" claim (minimal fix)
-Update the `VesselData` docstring to say *"snapshot"* rather than *"immutable snapshot"* and add a note that `last_seen` is updated by the coordinator.
-
-**Pros:** Smallest change, no functional impact.  
-**Cons:** Does not enforce the intended design; the field remains mutable.
-
-### Option 2 — Use `dataclasses.replace()` to produce a fresh copy (preferred)
-```python
-from dataclasses import replace
-
-for vessel in fresh:
-    updated = replace(vessel, last_seen=now)
-    self._vessels[updated.mmsi] = updated
-```
-This preserves the original snapshot from the client and stores a new object with the updated timestamp.
-
-**Pros:** True snapshot semantics; safe to share references from `_parse_row`.  
-**Cons:** Minor extra allocation per vessel per poll cycle (negligible).
-
-### Option 3 — Make the dataclass `frozen=True` and store timestamps separately
-Store `last_seen` outside `VesselData` (e.g., in a parallel `dict[str, datetime]` in the coordinator).
-
-**Pros:** Enforces immutability at the Python level.  
-**Cons:** More invasive refactor; separates logically related data.
-
----
-
-## Recommendation
-
-**Option 2** — `dataclasses.replace()` in `coordinator.py`. It is a one-line fix, preserves the intended immutability, and does not require any interface changes downstream.
-
----
-
-## Acceptance criteria
-- [ ] `VesselData` docstring accurately reflects its mutability contract.
-- [ ] `coordinator.py` no longer directly mutates `vessel.last_seen` on an object that was returned by the client.
-- [ ] All existing tests still pass.
-- [ ] Ruff clean.
-
-_Originated from the non-blocking items noted in PR #19._
-BODY
-)"
-
-      - name: Create Issue C — Verify _parse_response field names against live data
+      - name: Create Issue C - Verify _parse_response field names
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          existing=$(gh issue list --repo "$REPO" --search "Verification: confirm _parse_response field names against live MarineTraffic data" --json number --jq '.[0].number' 2>/dev/null || true)
+          existing=$(gh issue list --repo "$REPO" \
+            --search "confirm _parse_response field names against live MarineTraffic data" \
+            --json number --jq '.[0].number' 2>/dev/null || true)
           if [ -n "$existing" ]; then
             echo "Issue C already exists (#$existing), skipping."
-            exit 0
+          else
+            gh issue create \
+              --repo "$REPO" \
+              --title "Verification: confirm _parse_response field names against live MarineTraffic data" \
+              --body-file ".github/ISSUE_BODIES/issue-c.md"
           fi
-          gh issue create \
-            --repo "$REPO" \
-            --title "Verification: confirm _parse_response field names against live MarineTraffic data" \
-            --label "needs-verification" \
-            --body "$(cat <<'BODY'
-## Summary
-
-The `_parse_response` docstring in `client.py` contains the comment **"placeholder — verify against live data"**.  The field names assumed by `_parse_row` have been inferred from observation and documentation but have **not yet been confirmed against a live MarineTraffic API response** in a production Home Assistant environment.
-
-If any field name is wrong, the corresponding attribute will silently remain `None` for every vessel — a bug that is very hard to detect without live data.
-
----
-
-## Field names to verify
-
-The following raw key names are currently assumed in `_parse_row`:
-
-| `VesselData` field | Assumed raw key | Risk if wrong |
-|---|---|---|
-| `mmsi` | `MMSI` | Critical — vessel is skipped entirely |
-| `name` | `SHIPNAME` | Medium — falls back to `"Vessel {mmsi}"` |
-| `vessel_type` | `SHIPTYPE` | Medium — defaults to `0` (Unknown) |
-| `latitude` | `LAT` | Critical — wrong position |
-| `longitude` | `LON` | Critical — wrong position |
-| `heading` | `HEADING` | Low — silently `None` |
-| `course` | `COURSE` | Low — silently `None` |
-| `speed` | `SPEED` | Low — silently `None` |
-| `status` | `NAVSTAT` | Low — silently `None` |
-| `origin` | `LASTPORT` | Low — silently `None` |
-| `destination` | `DESTINATION` | Low — silently `None` |
-| `eta` | `ETA_CALC` | Low — silently `None` |
-| `imo` | `IMO` | Low — silently `None` |
-| `flag` | `FLAG` | Low — silently `None` |
-| `callsign` | `CALLSIGN` | Low — silently `None` |
-| `length` | `LENGTH` | Low — silently `None` |
-
-The response envelope is also assumed to be:
-```json
-{ "data": { "rows": [ { ... } ] } }
-```
-with a fallback for `{ "rows": [ { ... } ] }`.
-
----
-
-## How to verify
-
-During initial production testing:
-
-1. **Enable `DEBUG` logging** for the `custom_components.marinetraffic_tracker` logger in `configuration.yaml`:
-   ```yaml
-   logger:
-     default: warning
-     logs:
-       custom_components.marinetraffic_tracker: debug
-   ```
-
-2. **Add a temporary log statement** at the top of `_parse_row` to dump the raw dict:
-   ```python
-   _LOGGER.debug("Raw vessel row keys: %s", list(row.keys()))
-   _LOGGER.debug("Raw vessel row sample: %s", row)
-   ```
-
-3. **Restart Home Assistant** and wait for the first poll.
-
-4. **Inspect the logs** for the raw key names and compare against the table above.
-
-5. **If any key name differs**, update `_parse_row` accordingly and remove the temporary log statement.
-
-6. **Remove the "placeholder" comment** from the `_parse_response` docstring once field names are confirmed.
-
----
-
-## Acceptance criteria
-- [ ] All field names in `_parse_row` confirmed against a live MarineTraffic response.
-- [ ] Any mismatched key names corrected in `_parse_row`.
-- [ ] "placeholder — verify against live data" comment removed from the `_parse_response` docstring.
-- [ ] A brief note added to the PR / commit confirming which HA version and MT endpoint was used for verification.
-
----
-
-## Notes
-- The MarineTraffic live-map endpoint is unofficial (scraped from the public web app) and **may change without notice**.  This verification should be repeated after any MarineTraffic site update that causes vessels to disappear.
-- If Issue A (add `draught`/`rate_of_turn`/`beam`) is being worked concurrently, those new field names (`DRAUGHT`, `ROT`, `C`, `D`) should be verified at the same time.
-
-_Originated from the non-blocking items noted in PR #19._
-BODY
-)"
