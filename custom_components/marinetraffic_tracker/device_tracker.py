@@ -12,6 +12,7 @@ Map integration
 card and the device-tracker integration display each vessel as a pin on the
 map automatically.  No additional lovelace configuration is required.
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,6 +45,7 @@ from .const import (
     DOMAIN,
     VESSEL_TYPE_ICONS,
     VESSEL_TYPE_MAP,
+    vessel_photo_url,
 )
 from .coordinator import MarineTrafficCoordinator
 from .entity import MarineTrafficEntity
@@ -73,8 +75,7 @@ async def async_setup_entry(
             return
 
         new_entities = [
-            MarineTrafficVesselTracker(coordinator, entry.entry_id, mmsi)
-            for mmsi in new_mmsis
+            MarineTrafficVesselTracker(coordinator, entry.entry_id, mmsi) for mmsi in new_mmsis
         ]
         known_mmsis.update(new_mmsis)
         _LOGGER.debug(
@@ -105,7 +106,14 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
     mmsi, vessel_name, vessel_type, speed_knots, heading, course, status,
     origin, destination, eta, latitude, longitude, imo, callsign, length,
     flag, last_seen.
+
+    Disabled by default to prevent entity-list explosion in busy ports or
+    high-traffic areas.  Users can enable individual vessel entities manually
+    via the Home Assistant entity registry.
     """
+
+    # Disabled by default — prevents entity explosion in high-traffic areas.
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -175,6 +183,11 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
         if vessel is None:
             return DEFAULT_VESSEL_ICON
         return VESSEL_TYPE_ICONS.get(vessel.vessel_type, DEFAULT_VESSEL_ICON)
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return a MarineTraffic thumbnail URL for this vessel, or None."""
+        return vessel_photo_url(self._mmsi)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

@@ -11,6 +11,7 @@ each time a previously-unseen vessel appears.  Vessels that age out of the
 registry become unavailable but remain in the entity registry so history is
 preserved.
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,7 +23,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import VesselData
-from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP
+from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP, vessel_photo_url
 from .coordinator import MarineTrafficCoordinator
 from .entity import MarineTrafficEntity
 
@@ -51,8 +52,7 @@ async def async_setup_entry(
         if not new_mmsis:
             return
         new_entities = [
-            MarineTrafficVesselSensor(coordinator, entry.entry_id, mmsi)
-            for mmsi in new_mmsis
+            MarineTrafficVesselSensor(coordinator, entry.entry_id, mmsi) for mmsi in new_mmsis
         ]
         known_mmsis.update(new_mmsis)
         async_add_entities(new_entities)
@@ -67,6 +67,7 @@ async def async_setup_entry(
 # ---------------------------------------------------------------------------
 # Global count sensor
 # ---------------------------------------------------------------------------
+
 
 class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
     """Sensor reporting the total number of vessels in the tracking area."""
@@ -100,6 +101,7 @@ class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
 # Per-vessel sensor
 # ---------------------------------------------------------------------------
 
+
 class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
     """Sensor representing a single tracked vessel.
 
@@ -108,7 +110,14 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
 
     EXTENSION POINT: Add richer attributes here (e.g. draught, destination
     confidence) as the client parser is extended to provide them.
+
+    Disabled by default to prevent entity-list explosion in busy ports or
+    high-traffic areas.  Users can enable individual vessel entities manually
+    via the Home Assistant entity registry.
     """
+
+    # Disabled by default — prevents entity explosion in high-traffic areas.
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -151,6 +160,11 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
         if vessel is None:
             return DEFAULT_VESSEL_ICON
         return VESSEL_TYPE_ICONS.get(vessel.vessel_type, DEFAULT_VESSEL_ICON)
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return a MarineTraffic thumbnail URL for this vessel, or None."""
+        return vessel_photo_url(self._mmsi)
 
     @property
     def native_value(self) -> str | None:
