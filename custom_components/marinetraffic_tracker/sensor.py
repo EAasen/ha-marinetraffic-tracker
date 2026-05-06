@@ -23,7 +23,28 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import VesselData
-from .const import DEFAULT_VESSEL_ICON, DOMAIN, VESSEL_TYPE_ICONS, VESSEL_TYPE_MAP, vessel_photo_url
+from .const import (
+    ATTR_CALLSIGN,
+    ATTR_COURSE,
+    ATTR_DESTINATION,
+    ATTR_ETA,
+    ATTR_FLAG,
+    ATTR_HEADING,
+    ATTR_IMO,
+    ATTR_LAST_SEEN,
+    ATTR_LENGTH,
+    ATTR_MMSI,
+    ATTR_ORIGIN,
+    ATTR_SPEED,
+    ATTR_STATUS,
+    ATTR_VESSEL_NAME,
+    ATTR_VESSEL_TYPE,
+    DEFAULT_VESSEL_ICON,
+    DOMAIN,
+    VESSEL_TYPE_ICONS,
+    VESSEL_TYPE_MAP,
+    vessel_photo_url,
+)
 from .coordinator import MarineTrafficCoordinator
 from .entity import MarineTrafficEntity
 
@@ -179,17 +200,21 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
         if vessel is None:
             return {}
         return {
-            "mmsi": vessel.mmsi,
-            "imo": vessel.imo,
-            "vessel_type": VESSEL_TYPE_MAP.get(vessel.vessel_type, f"Type {vessel.vessel_type}"),
+            ATTR_MMSI: vessel.mmsi,
+            ATTR_VESSEL_NAME: vessel.name,
+            ATTR_VESSEL_TYPE: VESSEL_TYPE_MAP.get(vessel.vessel_type, f"Type {vessel.vessel_type}"),
             "latitude": vessel.latitude,
             "longitude": vessel.longitude,
-            "heading": vessel.heading,
-            "course": vessel.course,
-            "speed_knots": vessel.speed,
-            "status": vessel.status,
-            "origin": vessel.origin,
-            "destination": vessel.destination,
-            "eta": vessel.eta,
-            "last_seen": vessel.last_seen.isoformat(),
+            ATTR_HEADING: vessel.heading,
+            ATTR_COURSE: vessel.course,
+            ATTR_SPEED: vessel.speed,
+            ATTR_STATUS: vessel.status,
+            ATTR_ORIGIN: vessel.origin,
+            ATTR_DESTINATION: vessel.destination,
+            ATTR_ETA: vessel.eta,
+            ATTR_IMO: vessel.imo,
+            ATTR_CALLSIGN: vessel.callsign,
+            ATTR_LENGTH: vessel.length,
+            ATTR_FLAG: vessel.flag,
+            ATTR_LAST_SEEN: vessel.last_seen.isoformat(),
         }
