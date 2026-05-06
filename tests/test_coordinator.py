@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -257,7 +258,9 @@ async def test_vessel_exits_fires_exited_event() -> None:
 
     # Vessel disappears and becomes stale
     client.get_vessels_in_radius = AsyncMock(return_value=[])
-    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = datetime.now(UTC) - timedelta(seconds=700)
+    mmsi = _CARGO_VESSEL.mmsi
+    stale_ts = datetime.now(UTC) - timedelta(seconds=700)
+    coordinator._vessels[mmsi] = replace(coordinator._vessels[mmsi], last_seen=stale_ts)
     await coordinator._async_update_data()
 
     exited = [e for e in fired_events if e["event_type"] == "marinetraffic_vessel_exited"]
@@ -331,7 +334,9 @@ async def test_stale_vessel_is_purged() -> None:
     assert _CARGO_VESSEL.mmsi in coordinator._vessels
 
     # Backdate last_seen so the vessel is stale
-    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = datetime.now(UTC) - timedelta(seconds=700)
+    mmsi = _CARGO_VESSEL.mmsi
+    stale_ts = datetime.now(UTC) - timedelta(seconds=700)
+    coordinator._vessels[mmsi] = replace(coordinator._vessels[mmsi], last_seen=stale_ts)
     client.get_vessels_in_radius = AsyncMock(return_value=[])
     result = await coordinator._async_update_data()
 
@@ -474,7 +479,9 @@ async def test_exited_event_payload_has_last_known_values() -> None:
     await coordinator._async_update_data()
 
     client.get_vessels_in_radius = AsyncMock(return_value=[])
-    coordinator._vessels[_TANKER_VESSEL.mmsi].last_seen = datetime.now(UTC) - timedelta(seconds=700)
+    mmsi = _TANKER_VESSEL.mmsi
+    stale_ts = datetime.now(UTC) - timedelta(seconds=700)
+    coordinator._vessels[mmsi] = replace(coordinator._vessels[mmsi], last_seen=stale_ts)
     await coordinator._async_update_data()
 
     exited = [e for e in fired_events if e["event_type"] == "marinetraffic_vessel_exited"]

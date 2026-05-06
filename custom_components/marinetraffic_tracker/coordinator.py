@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
@@ -180,8 +181,8 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
 
         # Merge fresh observations into the registry
         for vessel in fresh:
-            vessel.last_seen = now
-            self._vessels[vessel.mmsi] = vessel
+            updated = replace(vessel, last_seen=now)
+            self._vessels[updated.mmsi] = updated
 
         # Fire entered events for vessels that are new this cycle.
         for vessel in fresh:
