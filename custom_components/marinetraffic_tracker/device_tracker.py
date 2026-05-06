@@ -26,9 +26,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import VesselData
 from .const import (
+    ATTR_BEAM,
     ATTR_CALLSIGN,
     ATTR_COURSE,
     ATTR_DESTINATION,
+    ATTR_DRAUGHT,
     ATTR_ETA,
     ATTR_FLAG,
     ATTR_HEADING,
@@ -37,6 +39,7 @@ from .const import (
     ATTR_LENGTH,
     ATTR_MMSI,
     ATTR_ORIGIN,
+    ATTR_RATE_OF_TURN,
     ATTR_SPEED,
     ATTR_STATUS,
     ATTR_VESSEL_NAME,
@@ -105,7 +108,7 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
     All PRD-required attributes are present:
     mmsi, vessel_name, vessel_type, speed_knots, heading, course, status,
     origin, destination, eta, latitude, longitude, imo, callsign, length,
-    flag, last_seen.
+    flag, draught, rate_of_turn, beam, last_seen.
 
     Disabled by default to prevent entity-list explosion in busy ports or
     high-traffic areas.  Users can enable individual vessel entities manually
@@ -221,5 +224,8 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
             ATTR_CALLSIGN: vessel.callsign,
             ATTR_LENGTH: vessel.length,
             ATTR_FLAG: vessel.flag,
+            ATTR_DRAUGHT: vessel.draught,
+            ATTR_RATE_OF_TURN: vessel.rate_of_turn,
+            ATTR_BEAM: vessel.beam,
             ATTR_LAST_SEEN: vessel.last_seen.isoformat(),
         }

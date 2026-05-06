@@ -184,6 +184,128 @@ class TestParseRowNewFields:
 
 
 # ---------------------------------------------------------------------------
+# _parse_row: draught, rate_of_turn, and beam fields
+# ---------------------------------------------------------------------------
+
+
+class TestParseRowAisExtendedFields:
+    """Tests for draught, rate_of_turn, and beam fields added to _parse_row."""
+
+    def test_draught_populated_when_present(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "DRAUGHT": 62}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.draught == 62.0
+
+    def test_draught_as_string_is_coerced(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "DRAUGHT": "8.5"}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.draught == 8.5
+
+    def test_draught_absent_is_none(self) -> None:
+        client = _make_client()
+        vessel = client._parse_row(_BASE_ROW)
+        assert vessel is not None
+        assert vessel.draught is None
+
+    def test_draught_invalid_value_is_none(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "DRAUGHT": "N/A"}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.draught is None
+
+    def test_rate_of_turn_populated_when_present(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "ROT": 5}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.rate_of_turn == 5
+
+    def test_rate_of_turn_negative_value(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "ROT": -10}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.rate_of_turn == -10
+
+    def test_rate_of_turn_sentinel_minus_128_is_none(self) -> None:
+        """AIS sentinel –128 means 'no turn information'; must map to None."""
+        client = _make_client()
+        row = {**_BASE_ROW, "ROT": -128}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.rate_of_turn is None
+
+    def test_rate_of_turn_absent_is_none(self) -> None:
+        client = _make_client()
+        vessel = client._parse_row(_BASE_ROW)
+        assert vessel is not None
+        assert vessel.rate_of_turn is None
+
+    def test_rate_of_turn_invalid_value_is_none(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "ROT": "N/A"}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.rate_of_turn is None
+
+    def test_beam_derived_from_c_and_d(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "C": 12, "D": 8}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.beam == 20
+
+    def test_beam_as_strings_is_coerced(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "C": "15", "D": "10"}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.beam == 25
+
+    def test_beam_absent_when_c_missing(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "D": 8}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.beam is None
+
+    def test_beam_absent_when_d_missing(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "C": 12}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.beam is None
+
+    def test_beam_absent_when_both_missing(self) -> None:
+        client = _make_client()
+        vessel = client._parse_row(_BASE_ROW)
+        assert vessel is not None
+        assert vessel.beam is None
+
+    def test_beam_invalid_value_is_none(self) -> None:
+        client = _make_client()
+        row = {**_BASE_ROW, "C": "N/A", "D": 8}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.beam is None
+
+    def test_all_three_fields_populated_together(self) -> None:
+        """All three new AIS fields parse correctly in a single row."""
+        client = _make_client()
+        row = {**_BASE_ROW, "DRAUGHT": 55, "ROT": 3, "C": 10, "D": 12}
+        vessel = client._parse_row(row)
+        assert vessel is not None
+        assert vessel.draught == 55.0
+        assert vessel.rate_of_turn == 3
+        assert vessel.beam == 22
+
+
+# ---------------------------------------------------------------------------
 # _nav_status_to_str: full code coverage (0–15)
 # ---------------------------------------------------------------------------
 

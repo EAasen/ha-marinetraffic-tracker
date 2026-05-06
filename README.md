@@ -33,6 +33,9 @@ The integration domain is `marinetraffic_tracker`. It creates one **Vessel Count
 | `callsign` | Radio callsign |
 | `flag` | Flag state (ISO 2-letter code) |
 | `length` | Vessel length in metres |
+| `draught` | Vessel draught in decimetres (crew-entered, may be absent) |
+| `rate_of_turn` | Rate of turn in degrees/minute (positive = turning right; `null` when no info) |
+| `beam` | Vessel beam (width) in metres, derived from AIS antenna offsets C + D |
 | `last_seen` | Timestamp of last AIS observation |
 
 ## 🚀 Installation
