@@ -27,6 +27,7 @@ from custom_components.marinetraffic_tracker.const import (
     ATTR_LENGTH,
     ATTR_MMSI,
     ATTR_ORIGIN,
+    ATTR_POSITION_HISTORY,
     ATTR_RATE_OF_TURN,
     ATTR_SPEED,
     ATTR_STATUS,
@@ -92,6 +93,7 @@ def _make_coordinator(vessel: VesselData) -> MagicMock:
     coord = MagicMock()
     coord.last_update_success = True
     coord.data = {vessel.mmsi: vessel}
+    coord.get_position_history = MagicMock(return_value=[])
     return coord
 
 
@@ -285,3 +287,124 @@ class TestSensorAttributeValues:
         sensor._mmsi = "000000000"
         sensor._attr_unique_id = "test_entry_vessel_000000000"
         assert sensor.extra_state_attributes == {}
+
+
+# ---------------------------------------------------------------------------
+# Position history attribute
+# ---------------------------------------------------------------------------
+
+
+class TestPositionHistory:
+    """position_history attribute must be present and reflect coordinator data."""
+
+    def test_position_history_key_present_in_sensor(self) -> None:
+        """Sensor must include the position_history attribute key."""
+        attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
+        assert ATTR_POSITION_HISTORY in attrs
+
+    def test_position_history_key_present_in_tracker(self) -> None:
+        """Tracker must include the position_history attribute key."""
+        attrs = _make_tracker(_make_full_vessel()).extra_state_attributes
+        assert ATTR_POSITION_HISTORY in attrs
+
+    def test_position_history_empty_by_default(self) -> None:
+        """position_history should be an empty list when no history recorded."""
+        attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
+        assert attrs[ATTR_POSITION_HISTORY] == []
+
+    def test_position_history_reflects_coordinator(self) -> None:
+        """position_history must return the value from the coordinator."""
+        vessel = _make_full_vessel()
+        coord = MagicMock()
+        coord.last_update_success = True
+        coord.data = {vessel.mmsi: vessel}
+        history = [
+            {"latitude": 59.9, "longitude": 10.7, "timestamp": "2026-05-01T12:00:00+00:00"},
+            {"latitude": 59.91, "longitude": 10.71, "timestamp": "2026-05-01T12:01:00+00:00"},
+        ]
+        coord.get_position_history = MagicMock(return_value=history)
+
+        sensor = MarineTrafficVesselSensor.__new__(MarineTrafficVesselSensor)
+        sensor.coordinator = coord
+        sensor._entry_id = "test_entry"
+        sensor._mmsi = vessel.mmsi
+        sensor._attr_unique_id = f"test_entry_vessel_{vessel.mmsi}"
+
+        attrs = sensor.extra_state_attributes
+        assert attrs[ATTR_POSITION_HISTORY] == history
+        coord.get_position_history.assert_called_once_with(vessel.mmsi)
+
+
+# ---------------------------------------------------------------------------
+# Count sensor vessels attribute
+# ---------------------------------------------------------------------------
+
+
+class TestCountSensorVesselsAttribute:
+    """Count sensor must expose a structured vessels list for table cards."""
+
+    from custom_components.marinetraffic_tracker.sensor import MarineTrafficCountSensor
+
+    def _make_count_sensor(self, vessels: dict) -> "MarineTrafficCountSensor":
+        from custom_components.marinetraffic_tracker.sensor import MarineTrafficCountSensor
+
+        coord = MagicMock()
+        coord.last_update_success = True
+        coord.data = vessels
+        sensor = MarineTrafficCountSensor.__new__(MarineTrafficCountSensor)
+        sensor.coordinator = coord
+        sensor._entry_id = "test_entry"
+        sensor._attr_unique_id = "test_entry_count"
+        sensor._attr_name = "Vessel Count"
+        return sensor
+
+    def test_vessels_key_present(self) -> None:
+        """Count sensor extra_state_attributes must include 'vessels' key."""
+        vessel = _make_full_vessel()
+        sensor = self._make_count_sensor({vessel.mmsi: vessel})
+        assert "vessels" in sensor.extra_state_attributes
+
+    def test_vessel_mmsis_key_present(self) -> None:
+        """Count sensor must still expose vessel_mmsis list."""
+        vessel = _make_full_vessel()
+        sensor = self._make_count_sensor({vessel.mmsi: vessel})
+        assert "vessel_mmsis" in sensor.extra_state_attributes
+
+    def test_vessels_list_contains_required_fields(self) -> None:
+        """Each entry in the vessels list must contain Name, MMSI, Speed, Status."""
+        vessel = _make_full_vessel()
+        sensor = self._make_count_sensor({vessel.mmsi: vessel})
+        vessels = sensor.extra_state_attributes["vessels"]
+
+        assert len(vessels) == 1
+        entry = vessels[0]
+        assert entry[ATTR_MMSI] == vessel.mmsi
+        assert entry[ATTR_VESSEL_NAME] == vessel.name
+        assert entry[ATTR_SPEED] == vessel.speed
+        assert entry[ATTR_STATUS] == vessel.status
+
+    def test_vessels_list_contains_entity_picture(self) -> None:
+        """Each entry must include an entity_picture thumbnail URL."""
+        vessel = _make_full_vessel()
+        sensor = self._make_count_sensor({vessel.mmsi: vessel})
+        entry = sensor.extra_state_attributes["vessels"][0]
+        assert "entity_picture" in entry
+        assert entry["entity_picture"] is not None
+        assert vessel.mmsi in entry["entity_picture"]
+
+    def test_vessels_list_is_sorted_by_name(self) -> None:
+        """Vessels list must be sorted alphabetically by vessel name."""
+        v1 = _make_full_vessel("111111111")
+        v2 = _make_minimal_vessel("222222222")
+        # FULL VESSEL comes after MINIMAL VESSEL alphabetically? No, F < M
+        sensor = self._make_count_sensor({v1.mmsi: v1, v2.mmsi: v2})
+        vessels = sensor.extra_state_attributes["vessels"]
+        names = [v[ATTR_VESSEL_NAME] for v in vessels]
+        assert names == sorted(names)
+
+    def test_vessels_empty_when_no_active_vessels(self) -> None:
+        """vessels list must be empty when no vessels are tracked."""
+        sensor = self._make_count_sensor({})
+        attrs = sensor.extra_state_attributes
+        assert attrs["vessels"] == []
+        assert attrs["vessel_mmsis"] == []

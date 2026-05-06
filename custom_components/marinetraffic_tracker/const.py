@@ -56,6 +56,7 @@ ATTR_LAST_SEEN = "last_seen"
 ATTR_DRAUGHT = "draught"
 ATTR_RATE_OF_TURN = "rate_of_turn"
 ATTR_BEAM = "beam"
+ATTR_POSITION_HISTORY = "position_history"
 
 # ---------------------------------------------------------------------------
 # Tracking modes
@@ -88,6 +89,7 @@ DEFAULT_UPDATE_INTERVAL = 60  # seconds
 DEFAULT_STALE_TIMEOUT = 600  # seconds (10 minutes)
 DEFAULT_JITTER_MAX = 10  # seconds of random pre-request delay
 DEFAULT_FILTER_VESSEL_TYPES: list[str] = []  # empty = no filter (show all types)
+DEFAULT_HISTORY_SIZE = 20  # maximum position history points stored per vessel
 
 # ---------------------------------------------------------------------------
 # Safety limits — anti-ban rate limiting compliance
