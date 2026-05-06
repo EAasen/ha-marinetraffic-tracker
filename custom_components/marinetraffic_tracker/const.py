@@ -59,6 +59,20 @@ ATTR_BEAM = "beam"
 ATTR_POSITION_HISTORY = "position_history"
 
 # ---------------------------------------------------------------------------
+# Statistics sensor attribute keys
+# ---------------------------------------------------------------------------
+ATTR_MOST_FREQUENT_VISITOR = "most_frequent_visitor"
+ATTR_LONGEST_RESIDENT = "longest_resident"
+ATTR_SPEED_RECORD = "speed_record"
+ATTR_LARGEST_VESSEL = "largest_vessel"
+ATTR_SMALLEST_VESSEL = "smallest_vessel"
+ATTR_BUSIEST_HOUR = "busiest_hour"
+ATTR_BUSIEST_DAY = "busiest_day"
+ATTR_HOURLY_COUNTS = "hourly_counts"
+ATTR_DAILY_COUNTS = "daily_counts"
+ATTR_TOTAL_VESSELS_SEEN = "total_vessels_seen"
+
+# ---------------------------------------------------------------------------
 # Tracking modes
 # ---------------------------------------------------------------------------
 TRACKING_MODE_RADIUS = "radius"

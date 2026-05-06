@@ -4,6 +4,9 @@ The coordinator owns the vessel state dictionary and is responsible for:
 - Periodic polling with randomised jitter to reduce rate-limit risk.
 - Merging fresh API results into the running vessel set.
 - Purging vessels that have not been observed within the stale timeout.
+- Maintaining historical statistics (visit counts, time-in-zone, speed/size
+  records, and hourly/daily traffic patterns) that persist even after vessels
+  are purged from the active registry.
 """
 
 from __future__ import annotations
@@ -11,8 +14,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -44,6 +48,112 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Statistics data model
+# ---------------------------------------------------------------------------
+
+@dataclass
+class VesselRecord:
+    """A snapshot of a vessel used for record-keeping in statistics."""
+
+    mmsi: str
+    name: str
+    value: float
+    recorded_at: str  # ISO-8601 timestamp
+
+
+@dataclass
+class AreaStatistics:
+    """Aggregate statistics for the tracked area.
+
+    All fields persist across coordinator refresh cycles so that records
+    survive even after a vessel is purged from the active registry.
+    """
+
+    # visit_counts[mmsi] = total number of times the vessel entered the zone.
+    visit_counts: dict[str, int] = field(default_factory=dict)
+    # total_time_seconds[mmsi] = cumulative seconds the vessel spent in zone.
+    total_time_seconds: dict[str, float] = field(default_factory=dict)
+    # vessel_names[mmsi] = most recently observed name for the MMSI.
+    vessel_names: dict[str, str] = field(default_factory=dict)
+
+    # Global records — None until at least one observation has been recorded.
+    speed_record: VesselRecord | None = None
+    largest_vessel: VesselRecord | None = None
+    smallest_vessel: VesselRecord | None = None
+
+    # Traffic pattern counters — 24 hourly and 7 daily buckets.
+    # Each observation of a vessel in a poll increments the current bucket.
+    hourly_counts: list[int] = field(default_factory=lambda: [0] * 24)
+    daily_counts: list[int] = field(default_factory=lambda: [0] * 7)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise statistics to a plain dict for sensor attributes."""
+        # Most frequent visitor
+        most_frequent: dict | None = None
+        if self.visit_counts:
+            top_mmsi = max(self.visit_counts, key=lambda m: self.visit_counts[m])
+            most_frequent = {
+                "mmsi": top_mmsi,
+                "name": self.vessel_names.get(top_mmsi, top_mmsi),
+                "visit_count": self.visit_counts[top_mmsi],
+            }
+
+        # Longest resident (by cumulative seconds in zone)
+        longest_resident: dict | None = None
+        if self.total_time_seconds:
+            top_mmsi = max(self.total_time_seconds, key=lambda m: self.total_time_seconds[m])
+            longest_resident = {
+                "mmsi": top_mmsi,
+                "name": self.vessel_names.get(top_mmsi, top_mmsi),
+                "total_time_seconds": round(self.total_time_seconds[top_mmsi]),
+            }
+
+        # Busiest hour / day
+        busiest_hour = self.hourly_counts.index(max(self.hourly_counts)) if any(self.hourly_counts) else None
+        busiest_day = self.daily_counts.index(max(self.daily_counts)) if any(self.daily_counts) else None
+
+        return {
+            "most_frequent_visitor": most_frequent,
+            "longest_resident": longest_resident,
+            "speed_record": (
+                {
+                    "mmsi": self.speed_record.mmsi,
+                    "name": self.speed_record.name,
+                    "speed_knots": self.speed_record.value,
+                    "recorded_at": self.speed_record.recorded_at,
+                }
+                if self.speed_record
+                else None
+            ),
+            "largest_vessel": (
+                {
+                    "mmsi": self.largest_vessel.mmsi,
+                    "name": self.largest_vessel.name,
+                    "length_m": self.largest_vessel.value,
+                    "recorded_at": self.largest_vessel.recorded_at,
+                }
+                if self.largest_vessel
+                else None
+            ),
+            "smallest_vessel": (
+                {
+                    "mmsi": self.smallest_vessel.mmsi,
+                    "name": self.smallest_vessel.name,
+                    "length_m": self.smallest_vessel.value,
+                    "recorded_at": self.smallest_vessel.recorded_at,
+                }
+                if self.smallest_vessel
+                else None
+            ),
+            "busiest_hour": busiest_hour,
+            "busiest_day": busiest_day,
+            "hourly_counts": list(self.hourly_counts),
+            "daily_counts": list(self.daily_counts),
+            "total_vessels_seen": len(self.visit_counts),
+        }
+
+
 class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
     """Coordinator that polls MarineTraffic and manages the vessel registry.
 
@@ -63,6 +173,10 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         self._vessels: dict[str, VesselData] = {}
         # Per-vessel position history — stores recent (lat, lon, timestamp) tuples.
         self._position_history: dict[str, list[dict]] = {}
+        # Historical statistics — persists even after vessels leave the active registry.
+        self._statistics: AreaStatistics = AreaStatistics()
+        # Entry timestamps — records when each vessel entered the zone this session.
+        self._entry_times: dict[str, datetime] = {}
 
         # Anti-ban safety compliance: clamp the update interval to the hard floor
         # to protect the user's IP address from MarineTraffic rate limiting.
@@ -119,6 +233,11 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         history has been recorded for the given MMSI.
         """
         return list(self._position_history.get(mmsi, []))
+
+    @property
+    def statistics(self) -> AreaStatistics:
+        """Return the current historical statistics for the tracked area."""
+        return self._statistics
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -212,6 +331,9 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             if len(history) > DEFAULT_HISTORY_SIZE:
                 self._position_history[vessel.mmsi] = history[-DEFAULT_HISTORY_SIZE:]
 
+        # Update statistics for each observed vessel.
+        self._update_statistics(fresh, now)
+
         # Fire entered events for vessels that are new this cycle.
         for vessel in fresh:
             if vessel.mmsi not in previous_mmsis:
@@ -235,6 +357,8 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 "marinetraffic_vessel_exited",
                 self._vessel_event_payload(departed),
             )
+            # Accumulate time-in-zone when the vessel exits.
+            self._accumulate_time_in_zone(mmsi, now)
             del self._vessels[mmsi]
             self._position_history.pop(mmsi, None)
 
@@ -244,3 +368,68 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             len(stale),
         )
         return dict(self._vessels)
+
+    # ------------------------------------------------------------------
+    # Statistics helpers
+    # ------------------------------------------------------------------
+
+    def _update_statistics(self, vessels: list[VesselData], now: datetime) -> None:
+        """Update all historical statistics for the current set of observed vessels."""
+        stats = self._statistics
+        hour = now.hour
+        day = now.weekday()  # 0 = Monday, 6 = Sunday
+
+        for vessel in vessels:
+            mmsi = vessel.mmsi
+
+            # Always keep the latest name.
+            stats.vessel_names[mmsi] = vessel.name
+
+            # Record the entry time if this is the vessel's first appearance
+            # (so we can later compute time-in-zone when it departs).
+            if mmsi not in self._entry_times:
+                self._entry_times[mmsi] = now
+                # Increment visit count on each new entry.
+                stats.visit_counts[mmsi] = stats.visit_counts.get(mmsi, 0) + 1
+
+            # Traffic pattern: count each vessel-observation per bucket.
+            stats.hourly_counts[hour] += 1
+            stats.daily_counts[day] += 1
+
+            # Speed record.
+            if vessel.speed is not None:
+                if stats.speed_record is None or vessel.speed > stats.speed_record.value:
+                    stats.speed_record = VesselRecord(
+                        mmsi=mmsi,
+                        name=vessel.name,
+                        value=vessel.speed,
+                        recorded_at=now.isoformat(),
+                    )
+
+            # Size records (only vessels with a valid positive length).
+            if vessel.length is not None and vessel.length > 0:
+                length = float(vessel.length)
+                if stats.largest_vessel is None or length > stats.largest_vessel.value:
+                    stats.largest_vessel = VesselRecord(
+                        mmsi=mmsi,
+                        name=vessel.name,
+                        value=length,
+                        recorded_at=now.isoformat(),
+                    )
+                if stats.smallest_vessel is None or length < stats.smallest_vessel.value:
+                    stats.smallest_vessel = VesselRecord(
+                        mmsi=mmsi,
+                        name=vessel.name,
+                        value=length,
+                        recorded_at=now.isoformat(),
+                    )
+
+    def _accumulate_time_in_zone(self, mmsi: str, now: datetime) -> None:
+        """Add the elapsed time for a departing vessel to the cumulative total."""
+        entry_time = self._entry_times.pop(mmsi, None)
+        if entry_time is None:
+            return
+        elapsed = (now - entry_time).total_seconds()
+        self._statistics.total_time_seconds[mmsi] = (
+            self._statistics.total_time_seconds.get(mmsi, 0.0) + elapsed
+        )
