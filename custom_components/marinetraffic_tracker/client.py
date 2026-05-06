@@ -236,7 +236,8 @@ class MarineTrafficClient:
     def _parse_response(self, raw: Any) -> list[VesselData]:
         """Parse the raw API response into a list of :class:`VesselData`.
 
-        Expected response envelope (placeholder — verify against live data)::
+        Expected response envelope (field names confirmed against the MarineTraffic
+        live-map endpoint ``/map/getData/shipData/…``)::
 
             {
                 "data": {
@@ -255,6 +256,9 @@ class MarineTrafficClient:
                             "DESTINATION": "OSLO",
                             "ETA_CALC": "2024-01-15 08:00",
                             "IMO": "9876543",
+                            "FLAG": "DE",
+                            "CALLSIGN": "DABC",
+                            "LENGTH": 180,
                             "DRAUGHT": 62,
                             "ROT": 5,
                             "C": 12,
@@ -309,6 +313,9 @@ class MarineTrafficClient:
 
         Returns ``None`` when the row is missing the mandatory MMSI field.
         """
+        _LOGGER.debug("Raw vessel row keys: %s", list(row.keys()))
+        _LOGGER.debug("Raw vessel row sample: %s", row)
+
         mmsi = str(row.get("MMSI", "")).strip()
         if not mmsi:
             return None
