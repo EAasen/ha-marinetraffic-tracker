@@ -385,3 +385,111 @@ class TestNavStatusToStr:
         """The function must accept a string representation of a valid code."""
         assert _nav_status_to_str("0") == "Under Way Using Engine"
         assert _nav_status_to_str("5") == "Moored"
+
+
+# ---------------------------------------------------------------------------
+# _parse_response: envelope parsing
+# ---------------------------------------------------------------------------
+
+
+class TestParseResponse:
+    """Tests for the _parse_response envelope handling."""
+
+    def test_data_rows_envelope(self) -> None:
+        """Primary envelope {"data": {"rows": [...]}} returns vessels."""
+        client = _make_client()
+        raw = {"data": {"rows": [_BASE_ROW]}}
+        vessels = client._parse_response(raw)
+        assert len(vessels) == 1
+        assert vessels[0].mmsi == "123456789"
+
+    def test_flat_rows_envelope(self) -> None:
+        """Fallback envelope {"rows": [...]} also returns vessels."""
+        client = _make_client()
+        raw = {"rows": [_BASE_ROW]}
+        vessels = client._parse_response(raw)
+        assert len(vessels) == 1
+        assert vessels[0].mmsi == "123456789"
+
+    def test_non_dict_response_returns_empty(self) -> None:
+        """A non-dict response (e.g. a list) yields an empty result."""
+        client = _make_client()
+        assert client._parse_response([]) == []
+        assert client._parse_response("string") == []
+
+    def test_empty_rows_returns_empty(self) -> None:
+        """An empty rows list yields an empty result."""
+        client = _make_client()
+        assert client._parse_response({"data": {"rows": []}}) == []
+        assert client._parse_response({"rows": []}) == []
+
+    def test_missing_rows_key_returns_empty(self) -> None:
+        """A dict without 'rows' yields an empty result."""
+        client = _make_client()
+        assert client._parse_response({}) == []
+        assert client._parse_response({"data": {}}) == []
+
+    def test_multiple_vessels_parsed(self) -> None:
+        """All valid rows in the envelope are returned."""
+        client = _make_client()
+        row2 = {**_BASE_ROW, "MMSI": "987654321", "SHIPNAME": "VESSEL TWO"}
+        raw = {"data": {"rows": [_BASE_ROW, row2]}}
+        vessels = client._parse_response(raw)
+        assert len(vessels) == 2
+
+    def test_row_without_mmsi_is_skipped(self) -> None:
+        """Rows missing MMSI are silently dropped; valid rows still returned."""
+        client = _make_client()
+        bad_row: dict = {k: v for k, v in _BASE_ROW.items() if k != "MMSI"}
+        raw = {"data": {"rows": [bad_row, _BASE_ROW]}}
+        vessels = client._parse_response(raw)
+        assert len(vessels) == 1
+        assert vessels[0].mmsi == "123456789"
+
+    def test_all_confirmed_field_names_parsed(self) -> None:
+        """All field names confirmed against the MarineTraffic live-map endpoint parse correctly."""
+        client = _make_client()
+        row = {
+            "MMSI": "123456789",
+            "SHIPNAME": "MY VESSEL",
+            "SHIPTYPE": 70,
+            "LAT": 59.123,
+            "LON": 10.456,
+            "HEADING": 180,
+            "COURSE": 182,
+            "SPEED": 12.5,
+            "NAVSTAT": 0,
+            "LASTPORT": "HAMBURG",
+            "DESTINATION": "OSLO",
+            "ETA_CALC": "2024-01-15 08:00",
+            "IMO": "9876543",
+            "FLAG": "DE",
+            "CALLSIGN": "DABC",
+            "LENGTH": 180,
+            "DRAUGHT": 62,
+            "ROT": 5,
+            "C": 12,
+            "D": 8,
+        }
+        vessels = client._parse_response({"data": {"rows": [row]}})
+        assert len(vessels) == 1
+        v = vessels[0]
+        assert v.mmsi == "123456789"
+        assert v.name == "MY VESSEL"
+        assert v.vessel_type == 70
+        assert v.latitude == 59.123
+        assert v.longitude == 10.456
+        assert v.heading == 180
+        assert v.course == 182
+        assert v.speed == 12.5
+        assert v.status == "Under Way Using Engine"
+        assert v.origin == "HAMBURG"
+        assert v.destination == "OSLO"
+        assert v.eta == "2024-01-15 08:00"
+        assert v.imo == "9876543"
+        assert v.flag == "DE"
+        assert v.callsign == "DABC"
+        assert v.length == 180
+        assert v.draught == 62.0
+        assert v.rate_of_turn == 5
+        assert v.beam == 20  # C(12) + D(8)
