@@ -12,6 +12,8 @@ A Home Assistant integration that tracks real-time maritime traffic within a spe
 - **Voyage Data:** Scrapes origin, destination, and ETA where publicly available.
 - **Auto-Cleanup:** Entities are automatically removed when a ship leaves your tracking zone.
 - **Map Integration:** Full support for the native HA Map card and `device_tracker` entities.
+- **Vessel Information Table:** The Vessel Count sensor exposes a `vessels` list attribute with name, MMSI, speed, status, type, position, and thumbnail URL for every active vessel — compatible with `flex-table-card`.
+- **Position History:** Each vessel sensor and device tracker exposes a `position_history` attribute (up to 20 recent positions) so you can visualise historical tracks on the map.
 
 ## 📊 Entities & Attributes
 
@@ -37,6 +39,16 @@ The integration domain is `marinetraffic_tracker`. It creates one **Vessel Count
 | `rate_of_turn` | Rate of turn in degrees/minute (positive = turning right; `null` when no info) |
 | `beam` | Vessel beam (width) in metres, derived from AIS antenna offsets C + D |
 | `last_seen` | Timestamp of last AIS observation |
+| `position_history` | List of up to 20 recent positions (each with `latitude`, `longitude`, `timestamp`) |
+
+### Vessel Count Sensor — extra attributes
+
+| Attribute | Description |
+| :--- | :--- |
+| `vessel_mmsis` | Sorted list of active MMSI strings |
+| `vessels` | Structured list of all active vessels (suitable for table cards — see below) |
+
+Each entry in `vessels` contains: `mmsi`, `vessel_name`, `vessel_type`, `speed_knots`, `status`, `heading`, `destination`, `latitude`, `longitude`, `entity_picture`.
 
 ## 🚀 Installation
 
@@ -63,6 +75,62 @@ Configuration is handled entirely via the UI:
 4. Set the **Update Interval** (default: 60 s, minimum: 30 s) and **Stale Vessel Timeout** (default: 600 s).
 
 Timing settings can be adjusted later via **Options** without removing the integration.
+
+## 🗺️ Dashboard Examples
+
+### Vessel Information Table (flex-table-card)
+
+Display all active vessels as a sortable table with thumbnails using [flex-table-card](https://github.com/custom-cards/flex-table-card):
+
+```yaml
+type: custom:flex-table-card
+title: Active Vessels
+entities:
+  include: sensor.marinetraffic_tracker_vessel_count
+columns:
+  - data: vessels
+    modify: x.entity_picture
+    name: Photo
+    icon: mdi:image
+  - data: vessels
+    modify: x.vessel_name
+    name: Vessel
+  - data: vessels
+    modify: x.mmsi
+    name: MMSI
+  - data: vessels
+    modify: x.speed_knots
+    name: Speed (kn)
+  - data: vessels
+    modify: x.status
+    name: Status
+  - data: vessels
+    modify: x.destination
+    name: Destination
+```
+
+### Historical Track on the Map
+
+Enable the `device_tracker` entities for the vessels you want to track (via **Settings → Entities → MarineTraffic Tracker**), then add a standard Map card. Home Assistant automatically records their state history, and the Map card's built-in history mode lets you replay tracks over any time period.
+
+To display a vessel's recent track programmatically, use the `position_history` attribute exposed by each vessel sensor or device tracker:
+
+```yaml
+# Example: template sensor that extracts the latest position from history
+template:
+  - sensor:
+      - name: "EVER GIVEN last position"
+        state: >
+          {% set hist = state_attr('sensor.marinetraffic_tracker_ever_given', 'position_history') %}
+          {% if hist %}{{ hist[-1].timestamp }}{% else %}unknown{% endif %}
+        attributes:
+          latitude: >
+            {% set hist = state_attr('sensor.marinetraffic_tracker_ever_given', 'position_history') %}
+            {% if hist %}{{ hist[-1].latitude }}{% endif %}
+          longitude: >
+            {% set hist = state_attr('sensor.marinetraffic_tracker_ever_given', 'position_history') %}
+            {% if hist %}{{ hist[-1].longitude }}{% endif %}
+```
 
 ## ⚠️ Disclaimer & Rate Limiting
 

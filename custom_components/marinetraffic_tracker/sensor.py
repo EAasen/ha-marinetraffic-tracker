@@ -37,6 +37,7 @@ from .const import (
     ATTR_LENGTH,
     ATTR_MMSI,
     ATTR_ORIGIN,
+    ATTR_POSITION_HISTORY,
     ATTR_RATE_OF_TURN,
     ATTR_SPEED,
     ATTR_STATUS,
@@ -117,8 +118,35 @@ class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose the list of active MMSIs for easy dashboard filtering."""
-        return {"vessel_mmsis": sorted((self.coordinator.data or {}).keys())}
+        """Expose the active vessel list for dashboard table and map cards.
+
+        ``vessel_mmsis`` — sorted list of active MMSI strings (unchanged).
+        ``vessels`` — structured list of vessel snapshots suitable for
+        flex-table-card and similar Lovelace table cards.  Each entry
+        contains the fields most useful for a vessel information table:
+        name, MMSI, type, speed, status, position, heading, destination, and
+        a MarineTraffic thumbnail URL.
+        """
+        vessels_data = self.coordinator.data or {}
+        vessels_list = [
+            {
+                ATTR_MMSI: v.mmsi,
+                ATTR_VESSEL_NAME: v.name,
+                ATTR_VESSEL_TYPE: VESSEL_TYPE_MAP.get(v.vessel_type, f"Type {v.vessel_type}"),
+                ATTR_SPEED: v.speed,
+                ATTR_STATUS: v.status,
+                ATTR_HEADING: v.heading,
+                ATTR_DESTINATION: v.destination,
+                "latitude": v.latitude,
+                "longitude": v.longitude,
+                "entity_picture": vessel_photo_url(v.mmsi),
+            }
+            for v in sorted(vessels_data.values(), key=lambda x: x.name)
+        ]
+        return {
+            "vessel_mmsis": sorted(vessels_data.keys()),
+            "vessels": vessels_list,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -223,4 +251,5 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
             ATTR_RATE_OF_TURN: vessel.rate_of_turn,
             ATTR_BEAM: vessel.beam,
             ATTR_LAST_SEEN: vessel.last_seen.isoformat(),
+            ATTR_POSITION_HISTORY: self.coordinator.get_position_history(self._mmsi),
         }

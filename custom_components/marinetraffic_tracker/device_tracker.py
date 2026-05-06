@@ -39,6 +39,7 @@ from .const import (
     ATTR_LENGTH,
     ATTR_MMSI,
     ATTR_ORIGIN,
+    ATTR_POSITION_HISTORY,
     ATTR_RATE_OF_TURN,
     ATTR_SPEED,
     ATTR_STATUS,
@@ -228,4 +229,5 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
             ATTR_RATE_OF_TURN: vessel.rate_of_turn,
             ATTR_BEAM: vessel.beam,
             ATTR_LAST_SEEN: vessel.last_seen.isoformat(),
+            ATTR_POSITION_HISTORY: self.coordinator.get_position_history(self._mmsi),
         }

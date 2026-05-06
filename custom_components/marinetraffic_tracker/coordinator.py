@@ -31,6 +31,7 @@ from .const import (
     CONF_TRACKING_MODE,
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
+    DEFAULT_HISTORY_SIZE,
     DEFAULT_JITTER_MAX,
     DEFAULT_RADIUS_KM,
     DEFAULT_STALE_TIMEOUT,
@@ -60,6 +61,8 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         self._entry = entry
         # Running vessel registry — persists across updates.
         self._vessels: dict[str, VesselData] = {}
+        # Per-vessel position history — stores recent (lat, lon, timestamp) tuples.
+        self._position_history: dict[str, list[dict]] = {}
 
         # Anti-ban safety compliance: clamp the update interval to the hard floor
         # to protect the user's IP address from MarineTraffic rate limiting.
@@ -103,6 +106,19 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 self._entry.data.get(CONF_STALE_TIMEOUT, DEFAULT_STALE_TIMEOUT),
             )
         )
+
+    # ------------------------------------------------------------------
+    # Public helpers
+    # ------------------------------------------------------------------
+
+    def get_position_history(self, mmsi: str) -> list[dict]:
+        """Return the stored position history for a vessel (oldest first).
+
+        Each entry is a dict with keys ``latitude``, ``longitude``, and
+        ``timestamp`` (ISO-8601 string).  Returns an empty list when no
+        history has been recorded for the given MMSI.
+        """
+        return list(self._position_history.get(mmsi, []))
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -184,6 +200,18 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             updated = replace(vessel, last_seen=now)
             self._vessels[updated.mmsi] = updated
 
+        # Record position history for each observed vessel.
+        for vessel in fresh:
+            pos_entry = {
+                "latitude": vessel.latitude,
+                "longitude": vessel.longitude,
+                "timestamp": now.isoformat(),
+            }
+            history = self._position_history.setdefault(vessel.mmsi, [])
+            history.append(pos_entry)
+            if len(history) > DEFAULT_HISTORY_SIZE:
+                self._position_history[vessel.mmsi] = history[-DEFAULT_HISTORY_SIZE:]
+
         # Fire entered events for vessels that are new this cycle.
         for vessel in fresh:
             if vessel.mmsi not in previous_mmsis:
@@ -208,6 +236,7 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 self._vessel_event_payload(departed),
             )
             del self._vessels[mmsi]
+            self._position_history.pop(mmsi, None)
 
         _LOGGER.debug(
             "Poll complete: %d active vessel(s), %d stale removed",

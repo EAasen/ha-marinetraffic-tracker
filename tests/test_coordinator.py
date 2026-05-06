@@ -12,6 +12,7 @@ from custom_components.marinetraffic_tracker.const import (
     CONF_FILTER_VESSEL_TYPES,
     CONF_STALE_TIMEOUT,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_HISTORY_SIZE,
     DEFAULT_JITTER_MAX,
     DEFAULT_STALE_TIMEOUT,
     MIN_UPDATE_INTERVAL,
@@ -511,3 +512,118 @@ async def test_multi_type_filter_allows_passenger_and_cargo() -> None:
     assert _CARGO_VESSEL.mmsi in result
     assert MOCK_VESSEL_PASSENGER.mmsi in result
     assert _TANKER_VESSEL.mmsi not in result
+
+
+# ---------------------------------------------------------------------------
+# Position history tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_position_history_recorded_on_first_observation() -> None:
+    """A vessel's first observation must create a single-entry position history."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client)
+    await coordinator._async_update_data()
+
+    history = coordinator.get_position_history(_CARGO_VESSEL.mmsi)
+    assert len(history) == 1
+    assert history[0]["latitude"] == _CARGO_VESSEL.latitude
+    assert history[0]["longitude"] == _CARGO_VESSEL.longitude
+    assert "timestamp" in history[0]
+
+
+@pytest.mark.asyncio
+async def test_position_history_grows_with_each_poll() -> None:
+    """Each poll cycle must append a new entry to the vessel's position history."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client)
+    for _ in range(3):
+        await coordinator._async_update_data()
+
+    history = coordinator.get_position_history(_CARGO_VESSEL.mmsi)
+    assert len(history) == 3
+
+
+@pytest.mark.asyncio
+async def test_position_history_capped_at_default_size() -> None:
+    """Position history must not exceed DEFAULT_HISTORY_SIZE entries."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client)
+    for _ in range(DEFAULT_HISTORY_SIZE + 5):
+        await coordinator._async_update_data()
+
+    history = coordinator.get_position_history(_CARGO_VESSEL.mmsi)
+    assert len(history) == DEFAULT_HISTORY_SIZE
+
+
+@pytest.mark.asyncio
+async def test_position_history_cleared_when_vessel_goes_stale() -> None:
+    """Position history must be removed when a vessel is purged as stale."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client, stale_timeout=600)
+    await coordinator._async_update_data()
+    assert len(coordinator.get_position_history(_CARGO_VESSEL.mmsi)) == 1
+
+    # Backdate so the vessel becomes stale
+    mmsi = _CARGO_VESSEL.mmsi
+    stale_ts = datetime.now(UTC) - timedelta(seconds=700)
+    coordinator._vessels[mmsi] = replace(coordinator._vessels[mmsi], last_seen=stale_ts)
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+    await coordinator._async_update_data()
+
+    assert coordinator.get_position_history(mmsi) == []
+
+
+@pytest.mark.asyncio
+async def test_get_position_history_unknown_mmsi_returns_empty() -> None:
+    """get_position_history must return an empty list for an untracked MMSI."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+
+    coordinator = _make_coordinator(hass, client)
+    await coordinator._async_update_data()
+
+    assert coordinator.get_position_history("999999999") == []
+
+
+@pytest.mark.asyncio
+async def test_get_position_history_returns_copy() -> None:
+    """get_position_history must return a copy so callers cannot mutate internal state."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL])
+
+    coordinator = _make_coordinator(hass, client)
+    await coordinator._async_update_data()
+
+    history = coordinator.get_position_history(_CARGO_VESSEL.mmsi)
+    original_len = len(history)
+    history.append({"latitude": 0, "longitude": 0, "timestamp": "fake"})
+
+    assert len(coordinator.get_position_history(_CARGO_VESSEL.mmsi)) == original_len
