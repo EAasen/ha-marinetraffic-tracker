@@ -1,4 +1,5 @@
 """Tests for MarineTrafficCoordinator — vessel filtering, hard floor, and event firing."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -74,6 +75,7 @@ async def _refresh(coordinator: MarineTrafficCoordinator) -> None:
 # Hard floor tests
 # ---------------------------------------------------------------------------
 
+
 def test_hard_floor_clamped() -> None:
     """An interval below MIN_UPDATE_INTERVAL must be silently clamped to the floor."""
     raw = 5
@@ -92,14 +94,16 @@ def test_coordinator_enforces_hard_floor() -> None:
     """Coordinator __init__ must use MIN_UPDATE_INTERVAL when entry has a lower value."""
     hass = MagicMock()
     client = AsyncMock()
-    entry = _make_entry(data={
-        CONF_UPDATE_INTERVAL: 5,  # below floor
-        CONF_STALE_TIMEOUT: 600,
-        "tracking_mode": "radius",
-        "latitude": 59.9,
-        "longitude": 10.7,
-        "radius_km": 50.0,
-    })
+    entry = _make_entry(
+        data={
+            CONF_UPDATE_INTERVAL: 5,  # below floor
+            CONF_STALE_TIMEOUT: 600,
+            "tracking_mode": "radius",
+            "latitude": 59.9,
+            "longitude": 10.7,
+            "radius_km": 50.0,
+        }
+    )
     coordinator = MarineTrafficCoordinator(hass, entry, client)
     assert coordinator.update_interval.total_seconds() == MIN_UPDATE_INTERVAL
 
@@ -108,14 +112,16 @@ def test_coordinator_respects_valid_interval() -> None:
     """Coordinator must use the configured interval when it is >= MIN_UPDATE_INTERVAL."""
     hass = MagicMock()
     client = AsyncMock()
-    entry = _make_entry(data={
-        CONF_UPDATE_INTERVAL: 120,
-        CONF_STALE_TIMEOUT: 600,
-        "tracking_mode": "radius",
-        "latitude": 59.9,
-        "longitude": 10.7,
-        "radius_km": 50.0,
-    })
+    entry = _make_entry(
+        data={
+            CONF_UPDATE_INTERVAL: 120,
+            CONF_STALE_TIMEOUT: 600,
+            "tracking_mode": "radius",
+            "latitude": 59.9,
+            "longitude": 10.7,
+            "radius_km": 50.0,
+        }
+    )
     coordinator = MarineTrafficCoordinator(hass, entry, client)
     assert coordinator.update_interval.total_seconds() == 120
 
@@ -124,14 +130,13 @@ def test_coordinator_respects_valid_interval() -> None:
 # Vessel type filter tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_filter_excludes_non_matching_types() -> None:
     """Only vessels whose type is in the filter list should appear in coordinator.data."""
     hass = MagicMock()
     client = AsyncMock()
-    client.get_vessels_in_radius = AsyncMock(
-        return_value=[_CARGO_VESSEL, _TANKER_VESSEL]
-    )
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL, _TANKER_VESSEL])
 
     coordinator = _make_coordinator(hass, client, filter_types=[80])  # Tankers only
     result = await coordinator._async_update_data()
@@ -145,9 +150,7 @@ async def test_empty_filter_includes_all_vessels() -> None:
     """An empty filter list must include all vessel types."""
     hass = MagicMock()
     client = AsyncMock()
-    client.get_vessels_in_radius = AsyncMock(
-        return_value=[_CARGO_VESSEL, _TANKER_VESSEL]
-    )
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL, _TANKER_VESSEL])
 
     coordinator = _make_coordinator(hass, client, filter_types=[])
     result = await coordinator._async_update_data()
@@ -161,9 +164,7 @@ async def test_filter_includes_multiple_types() -> None:
     """Multiple types in the filter must each be included."""
     hass = MagicMock()
     client = AsyncMock()
-    client.get_vessels_in_radius = AsyncMock(
-        return_value=[_CARGO_VESSEL, _TANKER_VESSEL]
-    )
+    client.get_vessels_in_radius = AsyncMock(return_value=[_CARGO_VESSEL, _TANKER_VESSEL])
 
     coordinator = _make_coordinator(hass, client, filter_types=[70, 80])
     result = await coordinator._async_update_data()
@@ -205,6 +206,7 @@ async def test_vessel_with_none_destination_does_not_raise() -> None:
 # ---------------------------------------------------------------------------
 # Entry/exit event tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_vessel_appears_fires_entered_event() -> None:
@@ -255,9 +257,7 @@ async def test_vessel_exits_fires_exited_event() -> None:
 
     # Vessel disappears and becomes stale
     client.get_vessels_in_radius = AsyncMock(return_value=[])
-    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = (
-        datetime.now(UTC) - timedelta(seconds=700)
-    )
+    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = datetime.now(UTC) - timedelta(seconds=700)
     await coordinator._async_update_data()
 
     exited = [e for e in fired_events if e["event_type"] == "marinetraffic_vessel_exited"]
@@ -300,6 +300,7 @@ async def test_repeated_refreshes_do_not_refire_entered() -> None:
 # Additional coverage: scenarios not covered by the existing unit tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_vessel_appears_and_is_tracked() -> None:
     """A vessel returned by the API must be added to coordinator._vessels."""
@@ -330,9 +331,7 @@ async def test_stale_vessel_is_purged() -> None:
     assert _CARGO_VESSEL.mmsi in coordinator._vessels
 
     # Backdate last_seen so the vessel is stale
-    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = (
-        datetime.now(UTC) - timedelta(seconds=700)
-    )
+    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = datetime.now(UTC) - timedelta(seconds=700)
     client.get_vessels_in_radius = AsyncMock(return_value=[])
     result = await coordinator._async_update_data()
 
@@ -351,9 +350,7 @@ async def test_empty_response_clears_stale_vessels() -> None:
     coordinator = _make_coordinator(hass, client, stale_timeout=600)
     await coordinator._async_update_data()
 
-    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = (
-        datetime.now(UTC) - timedelta(seconds=700)
-    )
+    coordinator._vessels[_CARGO_VESSEL.mmsi].last_seen = datetime.now(UTC) - timedelta(seconds=700)
     client.get_vessels_in_radius = AsyncMock(return_value=[])
     result = await coordinator._async_update_data()
 
@@ -390,15 +387,17 @@ async def test_box_mode_calls_get_vessels_in_box() -> None:
     client = AsyncMock()
     client.get_vessels_in_box = AsyncMock(return_value=[_CARGO_VESSEL])
 
-    entry = _make_entry(data={
-        "tracking_mode": TRACKING_MODE_BOX,
-        "north": 60.0,
-        "east": 11.0,
-        "south": 59.0,
-        "west": 10.0,
-        CONF_UPDATE_INTERVAL: 60,
-        CONF_STALE_TIMEOUT: 600,
-    })
+    entry = _make_entry(
+        data={
+            "tracking_mode": TRACKING_MODE_BOX,
+            "north": 60.0,
+            "east": 11.0,
+            "south": 59.0,
+            "west": 10.0,
+            CONF_UPDATE_INTERVAL: 60,
+            CONF_STALE_TIMEOUT: 600,
+        }
+    )
     coordinator = MarineTrafficCoordinator(hass, entry, client)
     result = await coordinator._async_update_data()
 
@@ -475,9 +474,7 @@ async def test_exited_event_payload_has_last_known_values() -> None:
     await coordinator._async_update_data()
 
     client.get_vessels_in_radius = AsyncMock(return_value=[])
-    coordinator._vessels[_TANKER_VESSEL.mmsi].last_seen = (
-        datetime.now(UTC) - timedelta(seconds=700)
-    )
+    coordinator._vessels[_TANKER_VESSEL.mmsi].last_seen = datetime.now(UTC) - timedelta(seconds=700)
     await coordinator._async_update_data()
 
     exited = [e for e in fired_events if e["event_type"] == "marinetraffic_vessel_exited"]

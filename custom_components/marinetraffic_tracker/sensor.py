@@ -11,6 +11,7 @@ each time a previously-unseen vessel appears.  Vessels that age out of the
 registry become unavailable but remain in the entity registry so history is
 preserved.
 """
+
 from __future__ import annotations
 
 import logging
@@ -51,8 +52,7 @@ async def async_setup_entry(
         if not new_mmsis:
             return
         new_entities = [
-            MarineTrafficVesselSensor(coordinator, entry.entry_id, mmsi)
-            for mmsi in new_mmsis
+            MarineTrafficVesselSensor(coordinator, entry.entry_id, mmsi) for mmsi in new_mmsis
         ]
         known_mmsis.update(new_mmsis)
         async_add_entities(new_entities)
@@ -67,6 +67,7 @@ async def async_setup_entry(
 # ---------------------------------------------------------------------------
 # Global count sensor
 # ---------------------------------------------------------------------------
+
 
 class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
     """Sensor reporting the total number of vessels in the tracking area."""
@@ -99,6 +100,7 @@ class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
 # ---------------------------------------------------------------------------
 # Per-vessel sensor
 # ---------------------------------------------------------------------------
+
 
 class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
     """Sensor representing a single tracked vessel.

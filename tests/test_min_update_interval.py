@@ -3,6 +3,7 @@
 These tests verify that the 30-second anti-ban safety threshold is enforced
 consistently across both the schema layer and the coordinator runtime.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -19,6 +20,7 @@ import voluptuous as vol
 # ---------------------------------------------------------------------------
 _COMPONENT_DIR = Path(__file__).parent.parent / "custom_components" / "marinetraffic_tracker"
 
+
 def _load_module(name: str, filename: str) -> types.ModuleType:
     spec = importlib.util.spec_from_file_location(name, _COMPONENT_DIR / filename)
     assert spec and spec.loader
@@ -26,6 +28,7 @@ def _load_module(name: str, filename: str) -> types.ModuleType:
     sys.modules[name] = mod
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
+
 
 _const = _load_module("marinetraffic_tracker_const", "const.py")
 
@@ -37,6 +40,7 @@ DEFAULT_UPDATE_INTERVAL = _const.DEFAULT_UPDATE_INTERVAL
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_min_update_interval_constant_value() -> None:
     """MIN_UPDATE_INTERVAL must be exactly 30 seconds (anti-ban hard floor)."""
@@ -56,9 +60,7 @@ def test_hard_floor_does_not_clamp_valid_intervals() -> None:
     """Intervals at or above 30s must not be modified by the hard floor."""
     for raw in (30, 60, 120, 300, 3600):
         enforced = max(raw, MIN_UPDATE_INTERVAL)
-        assert enforced == raw, (
-            f"Valid interval {raw}s was incorrectly clamped to {enforced}s"
-        )
+        assert enforced == raw, f"Valid interval {raw}s was incorrectly clamped to {enforced}s"
 
 
 def test_schema_min_equals_constant() -> None:

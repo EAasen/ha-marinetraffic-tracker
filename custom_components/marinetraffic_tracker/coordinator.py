@@ -5,6 +5,7 @@ The coordinator owns the vessel state dictionary and is responsible for:
 - Merging fresh API results into the running vessel set.
 - Purging vessels that have not been observed within the stale timeout.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -193,9 +194,7 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
 
         # Remove vessels not seen within the stale timeout
         stale_cutoff = now - timedelta(seconds=self.stale_timeout_seconds)
-        stale = [
-            mmsi for mmsi, v in self._vessels.items() if v.last_seen < stale_cutoff
-        ]
+        stale = [mmsi for mmsi, v in self._vessels.items() if v.last_seen < stale_cutoff]
         for mmsi in stale:
             departed = self._vessels[mmsi]
             _LOGGER.debug(

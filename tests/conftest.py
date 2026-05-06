@@ -1,4 +1,5 @@
 """Shared fixtures for MarineTraffic Tracker tests."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -64,6 +65,7 @@ MOCK_VESSEL_PASSENGER = VesselData(
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_client() -> MagicMock:

@@ -12,6 +12,7 @@ Map integration
 card and the device-tracker integration display each vessel as a pin on the
 map automatically.  No additional lovelace configuration is required.
 """
+
 from __future__ import annotations
 
 import logging
@@ -74,8 +75,7 @@ async def async_setup_entry(
             return
 
         new_entities = [
-            MarineTrafficVesselTracker(coordinator, entry.entry_id, mmsi)
-            for mmsi in new_mmsis
+            MarineTrafficVesselTracker(coordinator, entry.entry_id, mmsi) for mmsi in new_mmsis
         ]
         known_mmsis.update(new_mmsis)
         _LOGGER.debug(

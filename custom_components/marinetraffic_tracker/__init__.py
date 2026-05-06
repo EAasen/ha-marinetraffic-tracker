@@ -5,6 +5,7 @@ Domain: marinetraffic_tracker
 Entry point for integration setup and teardown.  The coordinator is created
 here so all platforms share one polling instance per config entry.
 """
+
 from __future__ import annotations
 
 import logging

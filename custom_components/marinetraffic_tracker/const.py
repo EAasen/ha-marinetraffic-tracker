@@ -1,4 +1,5 @@
 """Constants for the MarineTraffic Tracker integration."""
+
 from __future__ import annotations
 
 DOMAIN = "marinetraffic_tracker"
@@ -32,6 +33,7 @@ def vessel_photo_url(mmsi: str | None) -> str | None:
     if not mmsi_str or not mmsi_str.isdigit():
         return None
     return _VESSEL_PHOTO_URL_TEMPLATE.format(mmsi=mmsi_str)
+
 
 # ---------------------------------------------------------------------------
 # State attribute keys — used by device_tracker and sensor platforms
@@ -79,39 +81,36 @@ CONF_FILTER_VESSEL_TYPES = "filter_vessel_types"
 # ---------------------------------------------------------------------------
 DEFAULT_TRACKING_MODE = TRACKING_MODE_RADIUS
 DEFAULT_RADIUS_KM = 50.0
-DEFAULT_UPDATE_INTERVAL = 60     # seconds
-DEFAULT_STALE_TIMEOUT = 600      # seconds (10 minutes)
-DEFAULT_JITTER_MAX = 10          # seconds of random pre-request delay
+DEFAULT_UPDATE_INTERVAL = 60  # seconds
+DEFAULT_STALE_TIMEOUT = 600  # seconds (10 minutes)
+DEFAULT_JITTER_MAX = 10  # seconds of random pre-request delay
 DEFAULT_FILTER_VESSEL_TYPES: list[str] = []  # empty = no filter (show all types)
-
-# Minimum allowed update interval — hard floor to prevent rate-limit bans.
-MIN_UPDATE_INTERVAL = 30  # seconds
 
 # ---------------------------------------------------------------------------
 # Safety limits — anti-ban rate limiting compliance
 # Polling faster than 30s risks MarineTraffic banning the user's IP address.
 # This constant is the hard floor enforced both in config schema and at runtime.
 # ---------------------------------------------------------------------------
-MIN_UPDATE_INTERVAL = 30         # seconds — never poll faster than this
+MIN_UPDATE_INTERVAL = 30  # seconds — never poll faster than this
 
 # ---------------------------------------------------------------------------
 # Vessel type → MDI icon mapping (based on AIS vessel type codes)
 # EXTENSION POINT: add more type codes and icons as needed.
 # ---------------------------------------------------------------------------
 VESSEL_TYPE_ICONS: dict[int, str] = {
-    30: "mdi:fish",          # Fishing
-    36: "mdi:sail-boat",     # Sailing vessel
-    37: "mdi:sail-boat",     # Pleasure craft / recreational sailing
-    60: "mdi:ferry",         # Passenger
+    30: "mdi:fish",  # Fishing
+    36: "mdi:sail-boat",  # Sailing vessel
+    37: "mdi:sail-boat",  # Pleasure craft / recreational sailing
+    60: "mdi:ferry",  # Passenger
     61: "mdi:ferry",
     62: "mdi:ferry",
     63: "mdi:ferry",
     64: "mdi:ferry",
-    70: "mdi:ship-wheel",    # Cargo
+    70: "mdi:ship-wheel",  # Cargo
     71: "mdi:ship-wheel",
     72: "mdi:ship-wheel",
     79: "mdi:ship-wheel",
-    80: "mdi:water",         # Tanker (no dedicated tanker icon in MDI core)
+    80: "mdi:water",  # Tanker (no dedicated tanker icon in MDI core)
     81: "mdi:water",
     89: "mdi:water",
 }

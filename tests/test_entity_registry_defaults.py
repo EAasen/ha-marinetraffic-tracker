@@ -11,6 +11,7 @@ property descriptor backed by a ``__attr_entity_registry_enabled_default``
 class attribute.  We therefore inspect ``cls.__dict__`` to check the stored
 value directly.
 """
+
 from __future__ import annotations
 
 from custom_components.marinetraffic_tracker.device_tracker import (

@@ -12,6 +12,7 @@ SCHEMA NOTE:
     { "data": { "rows": [ {"MMSI": ..., "LAT": ..., ...}, ... ] } }
   Update ``_parse_row`` if MarineTraffic changes the field names.
 """
+
 from __future__ import annotations
 
 import logging
@@ -52,27 +53,21 @@ _USER_AGENTS: list[str] = [
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/123.0.0.0 Safari/537.36"
     ),
-    (
-        "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) "
-        "Gecko/20100101 Firefox/125.0"
-    ),
-    (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) "
-        "Gecko/20100101 Firefox/124.0"
-    ),
+    ("Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0"),
+    ("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0"),
 ]
 
 _BASE_HEADERS: dict[str, str] = {
-    "Accept":           "application/json, text/javascript, */*; q=0.01",
-    "Accept-Language":  "en-US,en;q=0.9",
-    "Accept-Encoding":  "gzip, deflate, br",
-    "Referer":          "https://www.marinetraffic.com/",
-    "Origin":           "https://www.marinetraffic.com",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://www.marinetraffic.com/",
+    "Origin": "https://www.marinetraffic.com",
     "X-Requested-With": "XMLHttpRequest",
-    "Connection":       "keep-alive",
-    "Sec-Fetch-Dest":   "empty",
-    "Sec-Fetch-Mode":   "cors",
-    "Sec-Fetch-Site":   "same-origin",
+    "Connection": "keep-alive",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
 }
 
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20)
@@ -149,8 +144,8 @@ class MarineTrafficClient:
            eliminating vessels in the box corners that are outside the circle.
         """
         _LOGGER.debug(
-            "Fetching vessels within %.1f km of (%.4f, %.4f)",
-            radius_km, latitude, longitude,
+            "Fetching vessels within %.1f km of configured tracking centre",
+            radius_km,
         )
 
         delta_lat = radius_km / 111.0
@@ -166,13 +161,16 @@ class MarineTrafficClient:
 
         # Strict Haversine filter — removes corner vessels outside the circle.
         in_radius = [
-            v for v in all_vessels
+            v
+            for v in all_vessels
             if _haversine_km(latitude, longitude, v.latitude, v.longitude) <= radius_km
         ]
 
         _LOGGER.debug(
             "Haversine filter: %d → %d vessels within %.1f km radius",
-            len(all_vessels), len(in_radius), radius_km,
+            len(all_vessels),
+            len(in_radius),
+            radius_km,
         )
         return in_radius
 
@@ -202,9 +200,7 @@ class MarineTrafficClient:
                 headers=headers,
                 timeout=_REQUEST_TIMEOUT,
             ) as resp:
-                _LOGGER.debug(
-                    "MarineTraffic responded with HTTP %s", resp.status
-                )
+                _LOGGER.debug("MarineTraffic responded with HTTP %s", resp.status)
                 if resp.status == 429:
                     _LOGGER.warning(
                         "MarineTraffic returned 429 Too Many Requests — "
@@ -214,9 +210,7 @@ class MarineTrafficClient:
                 resp.raise_for_status()
                 raw = await resp.json(content_type=None)
         except aiohttp.ClientResponseError as exc:
-            _LOGGER.error(
-                "MarineTraffic returned HTTP %s for %s", exc.status, url
-            )
+            _LOGGER.error("MarineTraffic returned HTTP %s for %s", exc.status, url)
             raise
         except aiohttp.ClientError as exc:
             _LOGGER.error("Network error fetching MarineTraffic data: %s", exc)
@@ -282,8 +276,7 @@ class MarineTrafficClient:
 
         if not rows:
             _LOGGER.debug(
-                "No vessel rows in MarineTraffic response "
-                "(empty area or changed response format)"
+                "No vessel rows in MarineTraffic response (empty area or changed response format)"
             )
             return vessels
 
@@ -333,6 +326,7 @@ class MarineTrafficClient:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Return the great-circle distance in kilometres between two points."""

@@ -1,4 +1,5 @@
 """Tests for entity_picture support in MarineTraffic Tracker vessel entities."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ from custom_components.marinetraffic_tracker.sensor import MarineTrafficVesselSe
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_vessel(
     mmsi: str = "123456789",
@@ -73,6 +75,7 @@ def _make_tracker(coordinator: MagicMock, mmsi: str) -> MarineTrafficVesselTrack
 # vessel_photo_url unit tests
 # ---------------------------------------------------------------------------
 
+
 class TestVesselPhotoUrl:
     """Unit tests for the ``vessel_photo_url`` helper."""
 
@@ -112,6 +115,7 @@ class TestVesselPhotoUrl:
 # ---------------------------------------------------------------------------
 # MarineTrafficVesselSensor — entity_picture tests
 # ---------------------------------------------------------------------------
+
 
 class TestVesselSensorEntityPicture:
     """Verify entity_picture on MarineTrafficVesselSensor."""
@@ -166,6 +170,7 @@ class TestVesselSensorEntityPicture:
 # ---------------------------------------------------------------------------
 # MarineTrafficVesselTracker — entity_picture tests
 # ---------------------------------------------------------------------------
+
 
 class TestVesselTrackerEntityPicture:
     """Verify entity_picture on MarineTrafficVesselTracker."""
