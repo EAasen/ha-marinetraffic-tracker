@@ -14,9 +14,11 @@ from unittest.mock import MagicMock
 
 from custom_components.marinetraffic_tracker.client import VesselData
 from custom_components.marinetraffic_tracker.const import (
+    ATTR_BEAM,
     ATTR_CALLSIGN,
     ATTR_COURSE,
     ATTR_DESTINATION,
+    ATTR_DRAUGHT,
     ATTR_ETA,
     ATTR_FLAG,
     ATTR_HEADING,
@@ -25,6 +27,7 @@ from custom_components.marinetraffic_tracker.const import (
     ATTR_LENGTH,
     ATTR_MMSI,
     ATTR_ORIGIN,
+    ATTR_RATE_OF_TURN,
     ATTR_SPEED,
     ATTR_STATUS,
     ATTR_VESSEL_NAME,
@@ -59,6 +62,9 @@ def _make_full_vessel(mmsi: str = "123456789") -> VesselData:
         flag="NO",
         callsign="LAABC",
         length=225,
+        draught=62.0,
+        rate_of_turn=5,
+        beam=32,
         last_seen=datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC),
     )
 
@@ -175,6 +181,18 @@ class TestSensorAttributeKeys:
         attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
         assert ATTR_LAST_SEEN in attrs
 
+    def test_draught_key_is_canonical(self) -> None:
+        attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
+        assert ATTR_DRAUGHT in attrs
+
+    def test_rate_of_turn_key_is_canonical(self) -> None:
+        attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
+        assert ATTR_RATE_OF_TURN in attrs
+
+    def test_beam_key_is_canonical(self) -> None:
+        attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
+        assert ATTR_BEAM in attrs
+
 
 # ---------------------------------------------------------------------------
 # Sensor and tracker expose the same canonical keys
@@ -236,11 +254,26 @@ class TestSensorAttributeValues:
         attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
         assert attrs[ATTR_VESSEL_NAME] == "FULL VESSEL"
 
+    def test_draught_value(self) -> None:
+        attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
+        assert attrs[ATTR_DRAUGHT] == 62.0
+
+    def test_rate_of_turn_value(self) -> None:
+        attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
+        assert attrs[ATTR_RATE_OF_TURN] == 5
+
+    def test_beam_value(self) -> None:
+        attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
+        assert attrs[ATTR_BEAM] == 32
+
     def test_optional_fields_none_when_absent(self) -> None:
         attrs = _make_sensor(_make_minimal_vessel()).extra_state_attributes
         assert attrs[ATTR_FLAG] is None
         assert attrs[ATTR_CALLSIGN] is None
         assert attrs[ATTR_LENGTH] is None
+        assert attrs[ATTR_DRAUGHT] is None
+        assert attrs[ATTR_RATE_OF_TURN] is None
+        assert attrs[ATTR_BEAM] is None
 
     def test_empty_attrs_when_vessel_absent(self) -> None:
         sensor = MarineTrafficVesselSensor.__new__(MarineTrafficVesselSensor)

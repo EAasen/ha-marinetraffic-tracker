@@ -53,6 +53,9 @@ ATTR_CALLSIGN = "callsign"
 ATTR_LENGTH = "length"
 ATTR_FLAG = "flag"
 ATTR_LAST_SEEN = "last_seen"
+ATTR_DRAUGHT = "draught"
+ATTR_RATE_OF_TURN = "rate_of_turn"
+ATTR_BEAM = "beam"
 
 # ---------------------------------------------------------------------------
 # Tracking modes

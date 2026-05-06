@@ -24,9 +24,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import VesselData
 from .const import (
+    ATTR_BEAM,
     ATTR_CALLSIGN,
     ATTR_COURSE,
     ATTR_DESTINATION,
+    ATTR_DRAUGHT,
     ATTR_ETA,
     ATTR_FLAG,
     ATTR_HEADING,
@@ -35,6 +37,7 @@ from .const import (
     ATTR_LENGTH,
     ATTR_MMSI,
     ATTR_ORIGIN,
+    ATTR_RATE_OF_TURN,
     ATTR_SPEED,
     ATTR_STATUS,
     ATTR_VESSEL_NAME,
@@ -216,5 +219,8 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
             ATTR_CALLSIGN: vessel.callsign,
             ATTR_LENGTH: vessel.length,
             ATTR_FLAG: vessel.flag,
+            ATTR_DRAUGHT: vessel.draught,
+            ATTR_RATE_OF_TURN: vessel.rate_of_turn,
+            ATTR_BEAM: vessel.beam,
             ATTR_LAST_SEEN: vessel.last_seen.isoformat(),
         }

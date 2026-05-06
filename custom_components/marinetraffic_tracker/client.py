@@ -100,6 +100,9 @@ class VesselData:
     flag: str | None = None
     callsign: str | None = None
     length: int | None = None
+    draught: float | None = None  # decimetres (AIS Message 5, manually entered)
+    rate_of_turn: int | None = None  # degrees/minute; None when no info (raw –128)
+    beam: int | None = None  # metres, derived from antenna offsets C + D
     # Timestamp of last successful observation — updated by the coordinator.
     last_seen: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -248,7 +251,11 @@ class MarineTrafficClient:
                             "LASTPORT": "HAMBURG",
                             "DESTINATION": "OSLO",
                             "ETA_CALC": "2024-01-15 08:00",
-                            "IMO": "9876543"
+                            "IMO": "9876543",
+                            "DRAUGHT": 62,
+                            "ROT": 5,
+                            "C": 12,
+                            "D": 8
                         }
                     ]
                 }
@@ -313,6 +320,32 @@ class MarineTrafficClient:
         except (ValueError, TypeError):
             length = None
 
+        raw_draught = row.get("DRAUGHT")
+        draught: float | None = None
+        try:
+            draught = float(raw_draught) if raw_draught is not None else None
+        except (ValueError, TypeError):
+            draught = None
+
+        raw_rot = row.get("ROT")
+        rate_of_turn: int | None = None
+        try:
+            if raw_rot is not None:
+                rot_int = int(raw_rot)
+                # AIS sentinel –128 (0x80) means "no turn information available"
+                rate_of_turn = None if rot_int == -128 else rot_int
+        except (ValueError, TypeError):
+            rate_of_turn = None
+
+        beam: int | None = None
+        try:
+            raw_c = row.get("C")
+            raw_d = row.get("D")
+            if raw_c is not None and raw_d is not None:
+                beam = int(raw_c) + int(raw_d)
+        except (ValueError, TypeError):
+            beam = None
+
         return VesselData(
             mmsi=mmsi,
             name=name,
@@ -330,6 +363,9 @@ class MarineTrafficClient:
             flag=str(row["FLAG"]).strip() or None if row.get("FLAG") else None,
             callsign=str(row["CALLSIGN"]).strip() or None if row.get("CALLSIGN") else None,
             length=length,
+            draught=draught,
+            rate_of_turn=rate_of_turn,
+            beam=beam,
         )
 
 
