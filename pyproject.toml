@@ -1,6 +1,18 @@
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-
 [tool.ruff]
+target-version = "py312"
 line-length = 100
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # isort
+  "UP",  # pyupgrade
+  "S",   # bandit security checks
+  "B",   # bugbear
+  "W",   # warnings
+]
+ignore = [
+  "S101",  # assert statements (used in tests)
+  "S311",  # Standard pseudo-random generators (used for jitter; flagged but intentional)
+]

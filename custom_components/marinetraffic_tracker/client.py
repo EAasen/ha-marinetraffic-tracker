@@ -19,7 +19,7 @@ import logging
 import math
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
@@ -101,7 +101,7 @@ class VesselData:
     callsign: str | None = None
     length: int | None = None
     # Timestamp of last successful observation — updated by the coordinator.
-    last_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_seen: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def unique_id(self) -> str:
@@ -143,14 +143,9 @@ class MarineTrafficClient:
         3. Post-filter with the Haversine formula for strict circle accuracy,
            eliminating vessels in the box corners that are outside the circle.
         """
-        # The coordinates logged here are the user-configured tracking center
-        # (not individual private location data).  AIS position data is
-        # publicly broadcast by vessels.
         _LOGGER.debug(
-            "Fetching vessels within %.1f km of (%.4f, %.4f)",
+            "Fetching vessels within %.1f km of configured tracking centre",
             radius_km,
-            latitude,  # noqa: S110 — user-configured center, not private data
-            longitude,  # noqa: S110 — user-configured center, not private data
         )
 
         delta_lat = radius_km / 111.0

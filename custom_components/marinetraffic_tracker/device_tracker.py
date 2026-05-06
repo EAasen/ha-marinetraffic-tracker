@@ -6,13 +6,6 @@ the first time a vessel's MMSI is observed and become unavailable (but
 remain in the entity registry) once the vessel ages out of the coordinator's
 active vessel dict.
 
-Entity registry default
------------------------
-Per-vessel tracker entities are **disabled by default** to avoid entity
-explosion in busy ports.  The aggregate count sensor (in ``sensor.py``)
-remains enabled.  Users can opt-in to specific vessel trackers from the
-HA entity registry UI.
-
 Map integration
 ---------------
 ``TrackerEntity`` exposes ``latitude``/``longitude`` so HA's built-in Map
@@ -107,19 +100,19 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
     configured stale timeout, default 10 minutes).  The entity remains in the
     entity registry so that its history is preserved.
 
-    Disabled by default — see module docstring for rationale.
-
     AIS data fields exposed as state attributes
     -------------------------------------------
     All PRD-required attributes are present:
     mmsi, vessel_name, vessel_type, speed_knots, heading, course, status,
     origin, destination, eta, latitude, longitude, imo, callsign, length,
     flag, last_seen.
+
+    Disabled by default to prevent entity-list explosion in busy ports or
+    high-traffic areas.  Users can enable individual vessel entities manually
+    via the Home Assistant entity registry.
     """
 
-    # Per-vessel tracker entities are disabled by default to prevent entity
-    # explosion in busy harbours.  Users opt in per-vessel from the entity
-    # registry UI.
+    # Disabled by default — prevents entity explosion in high-traffic areas.
     _attr_entity_registry_enabled_default = False
 
     def __init__(
@@ -193,11 +186,8 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
 
     @property
     def entity_picture(self) -> str | None:
-        """Return an MMSI-based vessel photo URL, or None if MMSI is invalid."""
-        vessel = self._vessel
-        if vessel is None:
-            return None
-        return vessel_photo_url(vessel.mmsi)
+        """Return a MarineTraffic thumbnail URL for this vessel, or None."""
+        return vessel_photo_url(self._mmsi)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
