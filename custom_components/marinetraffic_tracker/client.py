@@ -78,10 +78,13 @@ _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20)
 # ---------------------------------------------------------------------------
 @dataclass
 class VesselData:
-    """Immutable snapshot of a single vessel's state.
+    """Snapshot of a single vessel's state.
 
     Fields map directly to what MarineTraffic exposes on its live map.
     Optional fields default to ``None`` when the source does not include them.
+
+    ``last_seen`` is stamped by the coordinator (via ``dataclasses.replace``)
+    when each fresh observation is merged into the vessel registry.
     """
 
     mmsi: str
