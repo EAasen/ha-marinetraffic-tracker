@@ -22,7 +22,9 @@ from custom_components.marinetraffic_tracker.coordinator import MarineTrafficCoo
 
 from .conftest import MOCK_VESSEL_CARGO, MOCK_VESSEL_PASSENGER, MOCK_VESSEL_TANKER
 
-# MOCK_VESSEL_TANKER has status "At Anchor", MOCK_VESSEL_PASSENGER has status "Moored"
+# MOCK_VESSEL_TANKER (mmsi=987654321) has status "At Anchor" — verified in conftest.py.
+# MOCK_VESSEL_PASSENGER (mmsi=555555555) has status "Moored" — verified in conftest.py.
+# MOCK_VESSEL_CARGO (mmsi=123456789) has status "Under Way Using Engine" — verified in conftest.py.
 _ACTIVE_VESSEL = MOCK_VESSEL_CARGO  # status "Under Way Using Engine"
 _ANCHORED_VESSEL = MOCK_VESSEL_TANKER  # status "At Anchor"
 _MOORED_VESSEL = MOCK_VESSEL_PASSENGER  # status "Moored"

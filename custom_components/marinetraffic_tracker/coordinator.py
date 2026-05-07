@@ -58,7 +58,17 @@ _LOGGER = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Return the great-circle distance in kilometres between two points."""
+    """Return the great-circle distance in kilometres between two lat/lon points.
+
+    Args:
+        lat1: Latitude of the first point in decimal degrees.
+        lon1: Longitude of the first point in decimal degrees.
+        lat2: Latitude of the second point in decimal degrees.
+        lon2: Longitude of the second point in decimal degrees.
+
+    Returns:
+        Distance in kilometres between the two points.
+    """
     earth_radius_km = 6371.0
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
