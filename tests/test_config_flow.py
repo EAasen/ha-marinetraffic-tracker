@@ -11,12 +11,14 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import voluptuous as vol
+from homeassistant.helpers import selector
 
 from custom_components.marinetraffic_tracker.config_flow import (
+    _STEP_MODE_SCHEMA,
     MarineTrafficConfigFlow,
     MarineTrafficOptionsFlow,
     _box_schema,
@@ -43,11 +45,8 @@ from custom_components.marinetraffic_tracker.const import (
     DATA_SOURCE_AISHUB,
     DATA_SOURCE_MARINETRAFFIC,
     DATA_SOURCE_VESSELFINDER,
-    DEFAULT_DATA_SOURCE,
-    DEFAULT_FALLBACK_SOURCE,
     DEFAULT_RADIUS_KM,
     DEFAULT_STALE_TIMEOUT,
-    DEFAULT_UPDATE_INTERVAL,
     FALLBACK_SOURCE_NONE,
     MIN_UPDATE_INTERVAL,
     MIN_UPDATE_INTERVAL_API,
@@ -294,6 +293,19 @@ class TestBoxSchema:
 
 class TestSourceSchema:
     """Tests for the _source_schema helper."""
+
+    def test_tracking_mode_schema_uses_select_selector(self) -> None:
+        """Tracking mode should use a friendly dropdown selector."""
+        selector_obj = _STEP_MODE_SCHEMA.schema[CONF_TRACKING_MODE]
+        assert isinstance(selector_obj, selector.SelectSelector)
+
+    def test_source_schema_uses_selectors(self) -> None:
+        """Source fields should use HA selectors for friendly labels."""
+        schema = _source_schema({})
+        assert isinstance(schema.schema[CONF_DATA_SOURCE], selector.SelectSelector)
+        assert isinstance(schema.schema[CONF_EXTRA_SOURCES], selector.SelectSelector)
+        assert isinstance(schema.schema[CONF_FALLBACK_SOURCE], selector.SelectSelector)
+        assert isinstance(schema.schema[CONF_AISHUB_API_KEY], selector.TextSelector)
 
     def test_schema_accepts_valid_marinetraffic_source(self) -> None:
         schema = _source_schema({})

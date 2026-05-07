@@ -50,6 +50,7 @@ from __future__ import annotations
 import logging
 import math
 import secrets
+from json import JSONDecodeError, loads
 from typing import Any
 
 import aiohttp
@@ -61,10 +62,16 @@ _LOGGER = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Endpoint
 # ---------------------------------------------------------------------------
-_GRID_URL = (
-    "https://www.vesselfinder.com/vesselsonmap"
-    "?bbox={west},{south},{east},{north}"
-    "&zoom={zoom}&mmsi=0&show_names=1&filters=0"
+_GRID_URLS: tuple[str, ...] = (
+    (
+        "https://www.vesselfinder.com/vesselsonmap"
+        "?bbox={west},{south},{east},{north}"
+        "&zoom={zoom}&mmsi=0&show_names=1&filters=0&pv=6"
+    ),
+    (
+        "https://www.vesselfinder.com/vesselsonmap"
+        "?pv=6&lat1={south}&lat2={north}&lon1={west}&lon2={east}&zoom={zoom}"
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -88,12 +95,16 @@ _BASE_HEADERS: dict[str, str] = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
     "Referer": "https://www.vesselfinder.com/",
     "Origin": "https://www.vesselfinder.com",
+    "X-Requested-With": "XMLHttpRequest",
     "Connection": "keep-alive",
 }
 
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20)
+_EMPTY_RESULT_HTTP_STATUSES: frozenset[int] = frozenset({403, 404, 410})
 
 # AIS heading sentinel — 511 means "not available".
 _HEADING_NOT_AVAILABLE = 511
@@ -185,44 +196,65 @@ class VesselFinderClient:
         zoom: int = 10,
     ) -> list[VesselData]:
         """Return vessels within the given geographic bounding box."""
-        url = _GRID_URL.format(
-            north=round(north, 4),
-            east=round(east, 4),
-            south=round(south, 4),
-            west=round(west, 4),
-            zoom=zoom,
-        )
-
         user_agent = secrets.choice(_USER_AGENTS)
         headers = {**_BASE_HEADERS, "User-Agent": user_agent}
-        _LOGGER.debug("GET VesselFinder %s", url)
+        urls = [
+            template.format(
+                north=round(north, 4),
+                east=round(east, 4),
+                south=round(south, 4),
+                west=round(west, 4),
+                zoom=zoom,
+            )
+            for template in _GRID_URLS
+        ]
 
-        try:
-            async with self._session.get(
-                url,
-                headers=headers,
-                timeout=_REQUEST_TIMEOUT,
-            ) as resp:
-                _LOGGER.debug("VesselFinder responded with HTTP %s", resp.status)
-                if resp.status == 429:
-                    _LOGGER.warning(
-                        "VesselFinder returned 429 Too Many Requests — "
-                        "consider increasing CONF_UPDATE_INTERVAL"
-                    )
+        last_http_error: aiohttp.ClientResponseError | None = None
+        for idx, url in enumerate(urls):
+            _LOGGER.debug("GET VesselFinder %s", url)
+            try:
+                async with self._session.get(
+                    url,
+                    headers=headers,
+                    timeout=_REQUEST_TIMEOUT,
+                ) as resp:
+                    _LOGGER.debug("VesselFinder responded with HTTP %s", resp.status)
+                    if resp.status == 429:
+                        _LOGGER.warning(
+                            "VesselFinder returned 429 Too Many Requests — "
+                            "consider increasing CONF_UPDATE_INTERVAL"
+                        )
+                        return []
+                    if resp.status in _EMPTY_RESULT_HTTP_STATUSES:
+                        _LOGGER.warning(
+                            "VesselFinder endpoint returned HTTP %s for %s",
+                            resp.status,
+                            url,
+                        )
+                        if idx < len(urls) - 1:
+                            continue
+                        return []
+
+                    resp.raise_for_status()
+                    return self._parse_response(await _read_json_or_text(resp))
+            except aiohttp.ClientResponseError as exc:
+                last_http_error = exc
+                _LOGGER.error("VesselFinder returned HTTP %s for %s", exc.status, url)
+                if exc.status in _EMPTY_RESULT_HTTP_STATUSES and idx < len(urls) - 1:
+                    continue
+                if exc.status in _EMPTY_RESULT_HTTP_STATUSES:
                     return []
-                resp.raise_for_status()
-                raw = await resp.json(content_type=None)
-        except aiohttp.ClientResponseError as exc:
-            _LOGGER.error("VesselFinder returned HTTP %s for %s", exc.status, url)
-            raise
-        except aiohttp.ClientError as exc:
-            _LOGGER.error("Network error fetching VesselFinder data: %s", exc)
-            raise
-        except Exception as exc:  # noqa: BLE001
-            _LOGGER.error("Unexpected error during VesselFinder fetch: %s", exc)
-            raise
+                raise
+            except aiohttp.ClientError as exc:
+                _LOGGER.error("Network error fetching VesselFinder data: %s", exc)
+                raise
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.error("Unexpected error during VesselFinder fetch: %s", exc)
+                raise
 
-        return self._parse_response(raw)
+        if last_http_error is not None:
+            raise last_http_error
+        return []
 
     # ------------------------------------------------------------------
     # EXTENSION POINT — parser
@@ -236,6 +268,9 @@ class VesselFinderClient:
         VesselFinder returns a list of compact vessel arrays.  Returns an empty
         list when the response format is unexpected or the area is empty.
         """
+        if isinstance(raw, str):
+            return self._parse_text_response(raw)
+
         vessels: list[VesselData] = []
 
         if not isinstance(raw, list):
@@ -262,6 +297,86 @@ class VesselFinderClient:
 
         _LOGGER.debug("Parsed %d vessel(s) from VesselFinder response", len(vessels))
         return vessels
+
+    def _parse_text_response(self, raw: str) -> list[VesselData]:
+        """Parse text/tab-delimited VesselFinder map responses."""
+        vessels: list[VesselData] = []
+        for line in raw.splitlines():
+            row = line.strip()
+            if not row:
+                continue
+
+            columns = row.split("\t")
+            vessel = self._parse_tab_row(columns)
+            if vessel is not None:
+                vessels.append(vessel)
+
+        _LOGGER.debug("Parsed %d vessel(s) from VesselFinder text response", len(vessels))
+        return vessels
+
+    def _parse_tab_row(self, row: list[str]) -> VesselData | None:
+        """Parse a tab-delimited VesselFinder row."""
+        if len(row) < 6:
+            return None
+
+        try:
+            lat = float(row[0]) / 600000.0
+            lon = float(row[1]) / 600000.0
+        except (TypeError, ValueError):
+            lat = None
+            lon = None
+
+        if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+            try:
+                mmsi = str(int(row[5])).strip()
+            except (TypeError, ValueError):
+                return None
+
+            if not mmsi or mmsi == "0":
+                return None
+
+            course: int | None = None
+            try:
+                course = int(float(row[2])) if len(row) > 2 and row[2] else None
+            except (TypeError, ValueError):
+                course = None
+
+            speed: float | None = None
+            try:
+                speed = float(row[3]) if len(row) > 3 and row[3] else None
+            except (TypeError, ValueError):
+                speed = None
+
+            heading: int | None = None
+            try:
+                if len(row) > 4 and row[4]:
+                    heading_raw = int(float(row[4]))
+                    heading = None if heading_raw == _HEADING_NOT_AVAILABLE else heading_raw
+            except (TypeError, ValueError):
+                heading = None
+
+            name = str(row[7]).strip() if len(row) > 7 and row[7].strip() else f"Vessel {mmsi}"
+
+            return VesselData(
+                mmsi=mmsi,
+                name=name,
+                vessel_type=0,
+                latitude=lat,
+                longitude=lon,
+                heading=heading,
+                course=course,
+                speed=speed,
+                status=None,
+                origin=None,
+                destination=None,
+                eta=None,
+                source="vesselfinder",
+            )
+
+        if row[0].strip().isdigit() and len(row[0].strip()) >= 7:
+            return self._parse_row(row)
+
+        return None
 
     def _parse_row(self, row: Any) -> VesselData | None:
         """Parse a single VesselFinder vessel list into a :class:`VesselData`.
@@ -373,3 +488,15 @@ def _radius_to_zoom(radius_km: float) -> int:
         return 10
     zoom = round(14.0 - math.log2(radius_km))
     return max(4, min(14, zoom))
+
+
+async def _read_json_or_text(resp: aiohttp.ClientResponse) -> Any:
+    """Return JSON-decoded content, falling back to raw text."""
+    try:
+        return await resp.json(content_type=None)
+    except (JSONDecodeError, aiohttp.ContentTypeError):
+        text = await resp.text()
+        try:
+            return loads(text)
+        except JSONDecodeError:
+            return text

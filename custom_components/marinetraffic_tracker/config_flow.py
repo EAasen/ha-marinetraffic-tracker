@@ -21,7 +21,6 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import selector
 
 from .const import (
@@ -42,7 +41,6 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
     DATA_SOURCE_AISHUB,
-    DATA_SOURCES,
     DEFAULT_DATA_SOURCE,
     DEFAULT_EXCLUDE_ANCHORED,
     DEFAULT_FALLBACK_SOURCE,
@@ -52,11 +50,9 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     FALLBACK_SOURCE_NONE,
-    FALLBACK_SOURCES,
     MIN_UPDATE_INTERVAL,
     MIN_UPDATE_INTERVAL_API,
     TRACKING_MODE_RADIUS,
-    TRACKING_MODES,
     VESSEL_TYPE_LABELS,
 )
 
@@ -67,6 +63,27 @@ _LOGGER = logging.getLogger(__name__)
 # the data is stored, so it never appears in the config entry.
 _CONF_LOCATION = "location"
 
+_TRACKING_MODE_OPTIONS: list[selector.SelectOptionDict] = [
+    selector.SelectOptionDict(value=TRACKING_MODE_RADIUS, label="Radius (map selector)"),
+    selector.SelectOptionDict(value="box", label="Bounding box"),
+]
+
+_DATA_SOURCE_OPTIONS: list[selector.SelectOptionDict] = [
+    selector.SelectOptionDict(value="marinetraffic", label="MarineTraffic"),
+    selector.SelectOptionDict(value="aishub", label="AISHub"),
+    selector.SelectOptionDict(value="vesselfinder", label="VesselFinder"),
+]
+
+_FALLBACK_SOURCE_OPTIONS: list[selector.SelectOptionDict] = [
+    selector.SelectOptionDict(value=FALLBACK_SOURCE_NONE, label="None"),
+    *_DATA_SOURCE_OPTIONS,
+]
+
+_VESSEL_TYPE_OPTIONS: list[selector.SelectOptionDict] = [
+    selector.SelectOptionDict(value=value, label=label)
+    for value, label in VESSEL_TYPE_LABELS.items()
+]
+
 # The LocationSelector returns radius in metres; we store it in kilometres.
 _METRES_PER_KM = 1000.0
 
@@ -76,7 +93,12 @@ _METRES_PER_KM = 1000.0
 
 _STEP_MODE_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_TRACKING_MODE, default=DEFAULT_TRACKING_MODE): vol.In(TRACKING_MODES),
+        vol.Required(CONF_TRACKING_MODE, default=DEFAULT_TRACKING_MODE): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=_TRACKING_MODE_OPTIONS,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        ),
     }
 )
 
@@ -87,28 +109,39 @@ def _source_schema(defaults: dict[str, Any]) -> vol.Schema:
     fallback_source = defaults.get(CONF_FALLBACK_SOURCE, DEFAULT_FALLBACK_SOURCE)
     aishub_api_key = defaults.get(CONF_AISHUB_API_KEY, "")
     extra_sources = defaults.get(CONF_EXTRA_SOURCES, [])
-    # Build the label map for the extra sources multi-select.
-    # Uses DATA_SOURCES list keys mapped to human-friendly names.
-    extra_sources_labels = {
-        "marinetraffic": "MarineTraffic",
-        "aishub": "AISHub",
-        "vesselfinder": "VesselFinder",
-    }
     return vol.Schema(
         {
-            vol.Required(CONF_DATA_SOURCE, default=data_source): vol.In(DATA_SOURCES),
+            vol.Required(CONF_DATA_SOURCE, default=data_source): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=_DATA_SOURCE_OPTIONS,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 CONF_EXTRA_SOURCES,
                 default=extra_sources,
-            ): cv.multi_select(extra_sources_labels),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=_DATA_SOURCE_OPTIONS,
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 CONF_FALLBACK_SOURCE,
                 default=fallback_source,
-            ): vol.In(FALLBACK_SOURCES),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=_FALLBACK_SOURCE_OPTIONS,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 CONF_AISHUB_API_KEY,
                 default=aishub_api_key,
-            ): str,
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
         }
     )
 
@@ -187,7 +220,13 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Optional(
                 CONF_FILTER_VESSEL_TYPES,
                 default=defaults.get(CONF_FILTER_VESSEL_TYPES, []),
-            ): cv.multi_select(VESSEL_TYPE_LABELS),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=_VESSEL_TYPE_OPTIONS,
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 CONF_EXCLUDE_ANCHORED,
                 default=defaults.get(CONF_EXCLUDE_ANCHORED, DEFAULT_EXCLUDE_ANCHORED),
