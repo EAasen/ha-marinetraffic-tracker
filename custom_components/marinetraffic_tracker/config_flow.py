@@ -25,6 +25,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_EAST,
+    CONF_EXCLUDE_ANCHORED,
     CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
@@ -35,6 +36,7 @@ from .const import (
     CONF_TRACKING_MODE,
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
+    DEFAULT_EXCLUDE_ANCHORED,
     DEFAULT_RADIUS_KM,
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_TRACKING_MODE,
@@ -135,6 +137,10 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
                 CONF_FILTER_VESSEL_TYPES,
                 default=defaults.get(CONF_FILTER_VESSEL_TYPES, []),
             ): cv.multi_select(VESSEL_TYPE_LABELS),
+            vol.Optional(
+                CONF_EXCLUDE_ANCHORED,
+                default=defaults.get(CONF_EXCLUDE_ANCHORED, DEFAULT_EXCLUDE_ANCHORED),
+            ): bool,
         }
     )
 
