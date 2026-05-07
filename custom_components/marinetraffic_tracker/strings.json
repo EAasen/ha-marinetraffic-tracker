@@ -31,6 +31,20 @@
           "west": "West Longitude"
         }
       },
+      "source": {
+        "title": "Data Source",
+        "description": "Choose your primary AIS data source and an optional fallback for automatic switching on failure.",
+        "data": {
+          "data_source": "Primary Data Source",
+          "fallback_source": "Fallback Data Source",
+          "aishub_api_key": "AISHub API Key (username)"
+        },
+        "data_description": {
+          "data_source": "MarineTraffic: web-scraper (30 s minimum interval, IP-ban risk). AISHub: official API with faster polling (requires API key). VesselFinder: web-scraper fallback with different coverage.",
+          "fallback_source": "Automatically switch to this source when the primary source fails. Select 'none' to disable fallback.",
+          "aishub_api_key": "Required when AISHub is selected as primary or fallback. Obtain a free key by contributing AIS data at https://www.aishub.net/"
+        }
+      },
       "timing": {
         "title": "Polling & Cleanup Settings",
         "description": "Configure how often vessels are fetched and when stale vessels are removed.",
@@ -41,7 +55,7 @@
           "exclude_anchored": "Exclude Anchored & Moored Vessels from Live Map"
         },
         "data_description": {
-          "update_interval": "How often to poll MarineTraffic for vessel data. Minimum 30 seconds to reduce rate-limiting risk.",
+          "update_interval": "How often to poll for vessel data. Minimum 30 s for scrapers (MarineTraffic/VesselFinder); minimum 5 s for AISHub API.",
           "stale_timeout": "A vessel not seen for this long will be removed. Default: 3600 s (1 hour). Max: 86400 s (24 hours).",
           "filter_vessel_types": "Only show vessels of the selected types. Leave empty to show all vessel types.",
           "exclude_anchored": "When enabled, vessels with 'At Anchor' or 'Moored' status are removed from the live map and device tracker entities but still appear in the Vessel Count sensor's anchored_vessels summary attribute. Position history for anchored vessels is always deduplicated to avoid recorder bloat."
@@ -50,7 +64,9 @@
     },
     "error": {
       "south_gte_north": "South latitude must be strictly less than north latitude.",
-      "west_gte_east": "West longitude must be strictly less than east longitude."
+      "west_gte_east": "West longitude must be strictly less than east longitude.",
+      "aishub_api_key_required": "An AISHub API key (username) is required when AISHub is selected as a data source.",
+      "fallback_same_as_primary": "The fallback source must differ from the primary source."
     },
     "abort": {
       "already_configured": "This tracking area is already configured."
@@ -59,6 +75,20 @@
   "options": {
     "step": {
       "init": {
+        "title": "Data Source Settings",
+        "description": "Change the primary data source, fallback source, and API key.",
+        "data": {
+          "data_source": "Primary Data Source",
+          "fallback_source": "Fallback Data Source",
+          "aishub_api_key": "AISHub API Key (username)"
+        },
+        "data_description": {
+          "data_source": "MarineTraffic: web-scraper (30 s minimum interval). AISHub: official API with faster polling (requires API key). VesselFinder: web-scraper fallback.",
+          "fallback_source": "Automatically switch to this source when the primary fails.",
+          "aishub_api_key": "Required when AISHub is selected as primary or fallback."
+        }
+      },
+      "timing": {
         "title": "Update Polling & Cleanup Settings",
         "data": {
           "update_interval": "Update Interval (seconds)",
@@ -67,12 +97,16 @@
           "exclude_anchored": "Exclude Anchored & Moored Vessels from Live Map"
         },
         "data_description": {
-          "update_interval": "How often to poll MarineTraffic for vessel data. Minimum 30 seconds.",
+          "update_interval": "How often to poll for vessel data. Minimum 30 s for scrapers; minimum 5 s for AISHub.",
           "stale_timeout": "A vessel not seen for this long will be removed.",
           "filter_vessel_types": "Only show vessels of the selected types. Leave empty to show all vessel types.",
           "exclude_anchored": "When enabled, vessels with 'At Anchor' or 'Moored' status are removed from the live map and device tracker entities but still appear in the Vessel Count sensor's anchored_vessels summary attribute."
         }
       }
+    },
+    "error": {
+      "aishub_api_key_required": "An AISHub API key (username) is required when AISHub is selected as a data source.",
+      "fallback_same_as_primary": "The fallback source must differ from the primary source."
     }
   }
 }
