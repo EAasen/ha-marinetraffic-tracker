@@ -32,6 +32,7 @@ from .const import (
     ATTR_CALLSIGN,
     ATTR_COURSE,
     ATTR_DAILY_COUNTS,
+    ATTR_DATA_SOURCE,
     ATTR_DESTINATION,
     ATTR_DRAUGHT,
     ATTR_ETA,
@@ -282,6 +283,7 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
             ATTR_BEAM: vessel.beam,
             ATTR_LAST_SEEN: vessel.last_seen.isoformat(),
             ATTR_POSITION_HISTORY: self.coordinator.get_position_history(self._mmsi),
+            ATTR_DATA_SOURCE: vessel.source,
         }
 
 

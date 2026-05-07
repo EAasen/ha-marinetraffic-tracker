@@ -29,6 +29,7 @@ from .const import (
     CONF_DATA_SOURCE,
     CONF_EAST,
     CONF_EXCLUDE_ANCHORED,
+    CONF_EXTRA_SOURCES,
     CONF_FALLBACK_SOURCE,
     CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
@@ -85,9 +86,21 @@ def _source_schema(defaults: dict[str, Any]) -> vol.Schema:
     data_source = defaults.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
     fallback_source = defaults.get(CONF_FALLBACK_SOURCE, DEFAULT_FALLBACK_SOURCE)
     aishub_api_key = defaults.get(CONF_AISHUB_API_KEY, "")
+    extra_sources = defaults.get(CONF_EXTRA_SOURCES, [])
+    # Build the label map for the extra sources multi-select.
+    # Uses DATA_SOURCES list keys mapped to human-friendly names.
+    extra_sources_labels = {
+        "marinetraffic": "MarineTraffic",
+        "aishub": "AISHub",
+        "vesselfinder": "VesselFinder",
+    }
     return vol.Schema(
         {
             vol.Required(CONF_DATA_SOURCE, default=data_source): vol.In(DATA_SOURCES),
+            vol.Optional(
+                CONF_EXTRA_SOURCES,
+                default=extra_sources,
+            ): cv.multi_select(extra_sources_labels),
             vol.Optional(
                 CONF_FALLBACK_SOURCE,
                 default=fallback_source,
@@ -142,7 +155,11 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
     # Anti-ban safety compliance: use source-aware minimum interval.
     # AISHub is an official API and supports faster polling.
     data_source = defaults.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
-    min_interval = MIN_UPDATE_INTERVAL_API if data_source == DATA_SOURCE_AISHUB else MIN_UPDATE_INTERVAL
+    extra_sources = defaults.get(CONF_EXTRA_SOURCES, [])
+    all_sources = [data_source] + list(extra_sources)
+    min_interval = (
+        MIN_UPDATE_INTERVAL_API if DATA_SOURCE_AISHUB in all_sources else MIN_UPDATE_INTERVAL
+    )
     try:
         raw_interval = int(defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
     except (ValueError, TypeError):
@@ -270,10 +287,14 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             data_source = user_input.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
             fallback = user_input.get(CONF_FALLBACK_SOURCE, FALLBACK_SOURCE_NONE)
+            extra_sources: list[str] = list(user_input.get(CONF_EXTRA_SOURCES, []))
             aishub_key = str(user_input.get(CONF_AISHUB_API_KEY, "")).strip()
 
-            # Validate: AISHub requires an API key whether used as primary or fallback.
-            aishub_in_use = data_source == DATA_SOURCE_AISHUB or fallback == DATA_SOURCE_AISHUB
+            # Validate: AISHub requires an API key whether used as primary, extra, or fallback.
+            all_sources = [data_source] + extra_sources + (
+                [fallback] if fallback != FALLBACK_SOURCE_NONE else []
+            )
+            aishub_in_use = DATA_SOURCE_AISHUB in all_sources
             if aishub_in_use and not aishub_key:
                 errors[CONF_AISHUB_API_KEY] = "aishub_api_key_required"
             # Validate: fallback source must differ from primary source.
@@ -284,6 +305,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._data.update(user_input)
                 # Normalise API key storage.
                 self._data[CONF_AISHUB_API_KEY] = aishub_key
+                self._data[CONF_EXTRA_SOURCES] = extra_sources
                 return await self.async_step_timing()
 
         return self.async_show_form(
@@ -301,19 +323,26 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._data.update(user_input)
 
-            # Build a unique ID from the geographic parameters so that the
-            # same tracking area cannot be configured twice.
+            # Build a unique ID from the geographic parameters and data source set
+            # so that the same tracking area can be configured with different
+            # source combinations without triggering the duplicate-entry guard.
             mode = self._data.get(CONF_TRACKING_MODE, TRACKING_MODE_RADIUS)
+            primary = self._data.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
+            extras: list[str] = list(self._data.get(CONF_EXTRA_SOURCES, []))
+            all_sources_sorted = "-".join(sorted({primary, *extras}))
+
             if mode == TRACKING_MODE_RADIUS:
                 unique_id = (
                     f"{self._data[CONF_LATITUDE]}"
                     f"_{self._data[CONF_LONGITUDE]}"
                     f"_{self._data[CONF_RADIUS_KM]}"
+                    f"_{all_sources_sorted}"
                 )
             else:
                 unique_id = (
                     f"{self._data[CONF_NORTH]}_{self._data[CONF_EAST]}"
                     f"_{self._data[CONF_SOUTH]}_{self._data[CONF_WEST]}"
+                    f"_{all_sources_sorted}"
                 )
 
             await self.async_set_unique_id(unique_id)
@@ -378,10 +407,14 @@ class MarineTrafficOptionsFlow(OptionsFlow):
         if user_input is not None:
             data_source = user_input.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
             fallback = user_input.get(CONF_FALLBACK_SOURCE, FALLBACK_SOURCE_NONE)
+            extra_sources: list[str] = list(user_input.get(CONF_EXTRA_SOURCES, []))
             aishub_key = str(user_input.get(CONF_AISHUB_API_KEY, "")).strip()
 
-            # AISHub requires an API key whether used as primary or fallback.
-            aishub_in_use = data_source == DATA_SOURCE_AISHUB or fallback == DATA_SOURCE_AISHUB
+            # AISHub requires an API key whether used as primary, extra, or fallback.
+            all_sources = [data_source] + extra_sources + (
+                [fallback] if fallback != FALLBACK_SOURCE_NONE else []
+            )
+            aishub_in_use = DATA_SOURCE_AISHUB in all_sources
             if aishub_in_use and not aishub_key:
                 errors[CONF_AISHUB_API_KEY] = "aishub_api_key_required"
 
@@ -391,6 +424,7 @@ class MarineTrafficOptionsFlow(OptionsFlow):
             if not errors:
                 self._options.update(user_input)
                 self._options[CONF_AISHUB_API_KEY] = aishub_key
+                self._options[CONF_EXTRA_SOURCES] = extra_sources
                 return await self.async_step_timing()
 
         current = {**self._config_entry.data, **self._config_entry.options}

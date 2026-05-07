@@ -343,4 +343,5 @@ class AISHubClient:
             rate_of_turn=rate_of_turn,
             beam=beam,
             draught=draught,
+            source="aishub",
         )

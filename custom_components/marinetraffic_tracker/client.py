@@ -108,6 +108,9 @@ class VesselData:
     beam: int | None = None  # metres, derived from antenna offsets C + D
     # Timestamp of last successful observation — updated by the coordinator.
     last_seen: datetime = field(default_factory=lambda: datetime.now(UTC))
+    # Data source that provided this observation (e.g. "marinetraffic", "aishub").
+    # None when the source is unknown or not set by the client.
+    source: str | None = None
 
     @property
     def unique_id(self) -> str:
@@ -380,6 +383,7 @@ class MarineTrafficClient:
             draught=draught,
             rate_of_turn=rate_of_turn,
             beam=beam,
+            source="marinetraffic",
         )
 
 
