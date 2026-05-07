@@ -373,7 +373,8 @@ class VesselFinderClient:
                 source="vesselfinder",
             )
 
-        if row[0].strip().isdigit() and len(row[0].strip()) >= 7:
+        first_column = row[0].strip()
+        if first_column.isdigit() and len(first_column) >= 7:
             return self._parse_row(row)
 
         return None
