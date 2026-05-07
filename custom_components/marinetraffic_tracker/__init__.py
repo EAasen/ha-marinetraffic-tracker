@@ -15,20 +15,58 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .aishub_client import AISHubClient
 from .client import MarineTrafficClient
-from .const import DOMAIN
+from .const import (
+    CONF_AISHUB_API_KEY,
+    CONF_DATA_SOURCE,
+    CONF_FALLBACK_SOURCE,
+    DATA_SOURCE_AISHUB,
+    DATA_SOURCE_MARINETRAFFIC,
+    DATA_SOURCE_VESSELFINDER,
+    DEFAULT_DATA_SOURCE,
+    DEFAULT_FALLBACK_SOURCE,
+    DOMAIN,
+    FALLBACK_SOURCE_NONE,
+)
 from .coordinator import MarineTrafficCoordinator
+from .vesselfinder_client import VesselFinderClient
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.DEVICE_TRACKER]
 
 
+def _build_client(source: str, session: object, api_key: str) -> object:
+    """Instantiate the appropriate vessel data client for *source*."""
+    if source == DATA_SOURCE_AISHUB:
+        return AISHubClient(session, api_key=api_key)  # type: ignore[arg-type]
+    if source == DATA_SOURCE_VESSELFINDER:
+        return VesselFinderClient(session)  # type: ignore[arg-type]
+    # Default / DATA_SOURCE_MARINETRAFFIC
+    return MarineTrafficClient(session)  # type: ignore[arg-type]
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MarineTraffic Tracker from a config entry."""
     session = async_get_clientsession(hass)
-    client = MarineTrafficClient(session)
-    coordinator = MarineTrafficCoordinator(hass, entry, client)
+
+    config: dict = {**entry.data, **entry.options}
+    primary_source: str = config.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
+    fallback_source: str = config.get(CONF_FALLBACK_SOURCE, DEFAULT_FALLBACK_SOURCE)
+    aishub_api_key: str = str(config.get(CONF_AISHUB_API_KEY, "")).strip()
+
+    client = _build_client(primary_source, session, aishub_api_key)
+    _LOGGER.debug("Primary data source: %s", primary_source)
+
+    fallback_client = None
+    if fallback_source and fallback_source != FALLBACK_SOURCE_NONE:
+        # Avoid building a fallback that requires the same credentials/session
+        # as the primary when neither can work (e.g., network outage).
+        fallback_client = _build_client(fallback_source, session, aishub_api_key)
+        _LOGGER.debug("Fallback data source: %s", fallback_source)
+
+    coordinator = MarineTrafficCoordinator(hass, entry, client, fallback_client=fallback_client)
 
     # Perform the first refresh so entities are available immediately.
     # If the initial fetch fails, the setup is aborted and HA will retry.

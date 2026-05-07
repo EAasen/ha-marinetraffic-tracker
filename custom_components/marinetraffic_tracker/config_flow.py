@@ -1,14 +1,15 @@
 """Config flow for MarineTraffic Tracker.
 
-The flow is split into three steps so the UI remains focused:
+The flow is split into four steps so the UI remains focused:
 
 1. ``user``   — choose tracking mode (radius or bounding box).
 2. ``radius`` / ``box`` — enter the geographic parameters for the chosen mode.
-3. ``timing`` — configure the update interval and stale vessel timeout.
+3. ``source`` — choose the primary data source, optional fallback, and API key.
+4. ``timing`` — configure the update interval and stale vessel timeout.
 
 An options flow (``MarineTrafficOptionsFlow``) allows users to adjust the
-timing parameters after the integration has been set up without needing to
-remove and re-add it.  Geographic parameters require a re-setup.
+source and timing parameters after the integration has been set up without
+needing to remove and re-add it.  Geographic parameters require a re-setup.
 """
 
 from __future__ import annotations
@@ -24,8 +25,11 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_AISHUB_API_KEY,
+    CONF_DATA_SOURCE,
     CONF_EAST,
     CONF_EXCLUDE_ANCHORED,
+    CONF_FALLBACK_SOURCE,
     CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
@@ -36,13 +40,20 @@ from .const import (
     CONF_TRACKING_MODE,
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
+    DATA_SOURCE_AISHUB,
+    DATA_SOURCES,
+    DEFAULT_DATA_SOURCE,
     DEFAULT_EXCLUDE_ANCHORED,
+    DEFAULT_FALLBACK_SOURCE,
     DEFAULT_RADIUS_KM,
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_TRACKING_MODE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    FALLBACK_SOURCE_NONE,
+    FALLBACK_SOURCES,
     MIN_UPDATE_INTERVAL,
+    MIN_UPDATE_INTERVAL_API,
     TRACKING_MODE_RADIUS,
     TRACKING_MODES,
     VESSEL_TYPE_LABELS,
@@ -67,6 +78,26 @@ _STEP_MODE_SCHEMA = vol.Schema(
         vol.Required(CONF_TRACKING_MODE, default=DEFAULT_TRACKING_MODE): vol.In(TRACKING_MODES),
     }
 )
+
+
+def _source_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Schema for the data source selection step."""
+    data_source = defaults.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
+    fallback_source = defaults.get(CONF_FALLBACK_SOURCE, DEFAULT_FALLBACK_SOURCE)
+    aishub_api_key = defaults.get(CONF_AISHUB_API_KEY, "")
+    return vol.Schema(
+        {
+            vol.Required(CONF_DATA_SOURCE, default=data_source): vol.In(DATA_SOURCES),
+            vol.Optional(
+                CONF_FALLBACK_SOURCE,
+                default=fallback_source,
+            ): vol.In(FALLBACK_SOURCES),
+            vol.Optional(
+                CONF_AISHUB_API_KEY,
+                default=aishub_api_key,
+            ): str,
+        }
+    )
 
 
 def _radius_schema(defaults: dict[str, Any]) -> vol.Schema:
@@ -108,27 +139,30 @@ def _box_schema(defaults: dict[str, Any]) -> vol.Schema:
 
 
 def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
-    # Anti-ban safety compliance: clamp any stored interval below the hard floor
-    # so it never gets persisted or shown as a default below MIN_UPDATE_INTERVAL.
+    # Anti-ban safety compliance: use source-aware minimum interval.
+    # AISHub is an official API and supports faster polling.
+    data_source = defaults.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
+    min_interval = MIN_UPDATE_INTERVAL_API if data_source == DATA_SOURCE_AISHUB else MIN_UPDATE_INTERVAL
     try:
         raw_interval = int(defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
     except (ValueError, TypeError):
         raw_interval = DEFAULT_UPDATE_INTERVAL
-    safe_interval = max(raw_interval, MIN_UPDATE_INTERVAL)
+    safe_interval = max(raw_interval, min_interval)
     if safe_interval != raw_interval:
         _LOGGER.warning(
-            "Update interval %ds is below the %ds hard floor (anti-ban rate limiting). "
+            "Update interval %ds is below the %ds hard floor for source '%s'. "
             "Overriding to %ds.",
             raw_interval,
-            MIN_UPDATE_INTERVAL,
-            MIN_UPDATE_INTERVAL,
+            min_interval,
+            data_source,
+            min_interval,
         )
     return vol.Schema(
         {
             vol.Required(
                 CONF_UPDATE_INTERVAL,
                 default=safe_interval,
-            ): vol.All(int, vol.Range(min=MIN_UPDATE_INTERVAL, max=3600)),
+            ): vol.All(int, vol.Range(min=min_interval, max=3600)),
             vol.Required(
                 CONF_STALE_TIMEOUT,
                 default=defaults.get(CONF_STALE_TIMEOUT, DEFAULT_STALE_TIMEOUT),
@@ -187,7 +221,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data[CONF_LONGITUDE] = loc["longitude"]
             # LocationSelector(radius=True) always includes "radius" in metres.
             self._data[CONF_RADIUS_KM] = loc["radius"] / _METRES_PER_KM
-            return await self.async_step_timing()
+            return await self.async_step_source()
 
         # Pre-populate with HA home coordinates so the map opens at a sensible
         # location rather than (0, 0).
@@ -217,7 +251,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "west_gte_east"
             else:
                 self._data.update(user_input)
-                return await self.async_step_timing()
+                return await self.async_step_source()
 
         return self.async_show_form(
             step_id="box",
@@ -226,7 +260,39 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
-    # Step 3: timing / polling parameters
+    # Step 3: data source selection
+    # ------------------------------------------------------------------
+
+    async def async_step_source(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Collect primary data source, fallback source, and optional AISHub API key."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            data_source = user_input.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
+            aishub_key = str(user_input.get(CONF_AISHUB_API_KEY, "")).strip()
+
+            # Validate: AISHub requires an API key.
+            if data_source == DATA_SOURCE_AISHUB and not aishub_key:
+                errors[CONF_AISHUB_API_KEY] = "aishub_api_key_required"
+            # Validate: fallback source must differ from primary source.
+            fallback = user_input.get(CONF_FALLBACK_SOURCE, FALLBACK_SOURCE_NONE)
+            if fallback != FALLBACK_SOURCE_NONE and fallback == data_source:
+                errors[CONF_FALLBACK_SOURCE] = "fallback_same_as_primary"
+
+            if not errors:
+                self._data.update(user_input)
+                # Normalise API key storage.
+                self._data[CONF_AISHUB_API_KEY] = aishub_key
+                return await self.async_step_timing()
+
+        return self.async_show_form(
+            step_id="source",
+            data_schema=_source_schema(self._data),
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------
+    # Step 4: timing / polling parameters
     # ------------------------------------------------------------------
 
     async def async_step_timing(self, user_input: dict[str, Any] | None = None) -> FlowResult:
@@ -293,7 +359,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class MarineTrafficOptionsFlow(OptionsFlow):
-    """Allow users to adjust timing settings without removing the integration.
+    """Allow users to adjust source and timing settings without removing the integration.
 
     Geographic parameters (coordinates, radius, box boundaries) are not
     editable via options because changing them effectively creates a different
@@ -302,14 +368,43 @@ class MarineTrafficOptionsFlow(OptionsFlow):
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         self._config_entry = config_entry
+        self._options: dict[str, Any] = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Handle the options form."""
+        """Handle the source selection step of the options flow."""
+        errors: dict[str, str] = {}
+
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            data_source = user_input.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
+            aishub_key = str(user_input.get(CONF_AISHUB_API_KEY, "")).strip()
+
+            if data_source == DATA_SOURCE_AISHUB and not aishub_key:
+                errors[CONF_AISHUB_API_KEY] = "aishub_api_key_required"
+
+            fallback = user_input.get(CONF_FALLBACK_SOURCE, FALLBACK_SOURCE_NONE)
+            if fallback != FALLBACK_SOURCE_NONE and fallback == data_source:
+                errors[CONF_FALLBACK_SOURCE] = "fallback_same_as_primary"
+
+            if not errors:
+                self._options.update(user_input)
+                self._options[CONF_AISHUB_API_KEY] = aishub_key
+                return await self.async_step_timing()
 
         current = {**self._config_entry.data, **self._config_entry.options}
         return self.async_show_form(
             step_id="init",
+            data_schema=_source_schema(current),
+            errors=errors,
+        )
+
+    async def async_step_timing(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle the timing settings step of the options flow."""
+        if user_input is not None:
+            self._options.update(user_input)
+            return self.async_create_entry(data=self._options)
+
+        current = {**self._config_entry.data, **self._config_entry.options, **self._options}
+        return self.async_show_form(
+            step_id="timing",
             data_schema=_timing_schema(current),
         )

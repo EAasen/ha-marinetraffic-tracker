@@ -7,6 +7,7 @@ The coordinator owns the vessel state dictionary and is responsible for:
 - Maintaining historical statistics (visit counts, time-in-zone, speed/size
   records, and hourly/daily traffic patterns) that persist even after vessels
   are purged from the active registry.
+- Automatic fallback to a secondary data source when the primary source fails.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from .client import MarineTrafficClient, VesselData
 from .const import (
     ANCHOR_SWING_THRESHOLD_KM,
     ANCHORED_STATUSES,
+    CONF_DATA_SOURCE,
     CONF_EAST,
     CONF_EXCLUDE_ANCHORED,
     CONF_FILTER_VESSEL_TYPES,
@@ -39,6 +41,8 @@ from .const import (
     CONF_TRACKING_MODE,
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
+    DATA_SOURCE_AISHUB,
+    DEFAULT_DATA_SOURCE,
     DEFAULT_EXCLUDE_ANCHORED,
     DEFAULT_HISTORY_SIZE,
     DEFAULT_JITTER_MAX,
@@ -47,6 +51,7 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     MIN_UPDATE_INTERVAL,
+    MIN_UPDATE_INTERVAL_API,
     TRACKING_MODE_RADIUS,
 )
 
@@ -188,19 +193,26 @@ class AreaStatistics:
 
 
 class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
-    """Coordinator that polls MarineTraffic and manages the vessel registry.
+    """Coordinator that polls vessel data sources and manages the vessel registry.
 
     ``data`` is a ``dict[mmsi, VesselData]`` representing all vessels
     currently considered active (i.e. seen within the stale timeout).
+
+    When a *fallback_client* is provided, the coordinator automatically tries
+    the fallback source whenever the primary client raises an exception.  This
+    ensures availability when one provider is temporarily unreachable or
+    returns a bad response.
     """
 
     def __init__(
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
-        client: MarineTrafficClient,
+        client: Any,
+        fallback_client: Any = None,
     ) -> None:
         self._client = client
+        self._fallback_client = fallback_client
         self._entry = entry
         # Running vessel registry — persists across updates.
         self._vessels: dict[str, VesselData] = {}
@@ -214,8 +226,16 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         # Entry timestamps — records when each vessel entered the zone this session.
         self._entry_times: dict[str, datetime] = {}
 
-        # Anti-ban safety compliance: clamp the update interval to the hard floor
-        # to protect the user's IP address from MarineTraffic rate limiting.
+        # Source-aware safety compliance: AISHub is an official API that allows
+        # faster polling; scrapers require a 30-second minimum to avoid IP bans.
+        data_source = entry.options.get(
+            CONF_DATA_SOURCE,
+            entry.data.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE),
+        )
+        min_interval = (
+            MIN_UPDATE_INTERVAL_API if data_source == DATA_SOURCE_AISHUB else MIN_UPDATE_INTERVAL
+        )
+
         try:
             raw_interval = int(
                 entry.options.get(
@@ -225,14 +245,15 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             )
         except (ValueError, TypeError):
             raw_interval = DEFAULT_UPDATE_INTERVAL
-        safe_interval = max(raw_interval, MIN_UPDATE_INTERVAL)
+        safe_interval = max(raw_interval, min_interval)
         if safe_interval != raw_interval:
             _LOGGER.warning(
-                "Update interval %ds is below the safe threshold of %ds. "
-                "Overriding to %ds to prevent MarineTraffic IP ban.",
+                "Update interval %ds is below the %ds safe floor for source '%s'. "
+                "Overriding to %ds.",
                 raw_interval,
-                MIN_UPDATE_INTERVAL,
-                MIN_UPDATE_INTERVAL,
+                min_interval,
+                data_source,
+                min_interval,
             )
         update_interval = timedelta(seconds=safe_interval)
 
@@ -308,12 +329,44 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
     # Core update logic
     # ------------------------------------------------------------------
 
+    async def _fetch_vessels(
+        self, client: Any, tracking_mode: str, config: dict
+    ) -> list[VesselData] | None:
+        """Attempt to fetch vessels from *client*; return ``None`` on failure.
+
+        This helper isolates the try/except so that ``_async_update_data`` can
+        cleanly fall through to the fallback client when the primary fails.
+        """
+        try:
+            if tracking_mode == TRACKING_MODE_RADIUS:
+                return await client.get_vessels_in_radius(
+                    latitude=float(config[CONF_LATITUDE]),
+                    longitude=float(config[CONF_LONGITUDE]),
+                    radius_km=float(config.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)),
+                )
+            return await client.get_vessels_in_box(
+                north=float(config[CONF_NORTH]),
+                east=float(config[CONF_EAST]),
+                south=float(config[CONF_SOUTH]),
+                west=float(config[CONF_WEST]),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.error("Data source fetch failed: %s", exc)
+            return None
+
     async def _async_update_data(self) -> dict[str, VesselData]:
         """Fetch fresh vessel data, merge into registry, purge stale entries.
 
         A random jitter of up to ``DEFAULT_JITTER_MAX`` seconds is applied
         before each request to spread load and avoid predictable polling
-        patterns that could trigger MarineTraffic's rate limiting.
+        patterns that could trigger rate limiting.
+
+        Fallback logic
+        --------------
+        When a *fallback_client* is configured, the coordinator automatically
+        retries with the fallback source whenever the primary client raises an
+        exception.  Both an error log and a debug message are emitted so the
+        user can see when fallback is being used.
 
         Anchored / moored vessel handling
         ----------------------------------
@@ -342,22 +395,14 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         config: dict = {**self._entry.data, **self._entry.options}
         tracking_mode = config.get(CONF_TRACKING_MODE, TRACKING_MODE_RADIUS)
 
-        try:
-            if tracking_mode == TRACKING_MODE_RADIUS:
-                fresh = await self._client.get_vessels_in_radius(
-                    latitude=float(config[CONF_LATITUDE]),
-                    longitude=float(config[CONF_LONGITUDE]),
-                    radius_km=float(config.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)),
-                )
-            else:
-                fresh = await self._client.get_vessels_in_box(
-                    north=float(config[CONF_NORTH]),
-                    east=float(config[CONF_EAST]),
-                    south=float(config[CONF_SOUTH]),
-                    west=float(config[CONF_WEST]),
-                )
-        except Exception as exc:
-            raise UpdateFailed(f"Error communicating with MarineTraffic: {exc}") from exc
+        fresh = await self._fetch_vessels(self._client, tracking_mode, config)
+        if fresh is None and self._fallback_client is not None:
+            _LOGGER.warning(
+                "Primary data source failed — switching to fallback source for this poll"
+            )
+            fresh = await self._fetch_vessels(self._fallback_client, tracking_mode, config)
+        if fresh is None:
+            raise UpdateFailed("All configured data sources failed to return vessel data")
 
         # Apply vessel type filter if configured.
         # Stored values may be strings (from the SelectSelector) or ints; normalise to int.

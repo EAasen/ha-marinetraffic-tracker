@@ -111,10 +111,35 @@ DEFAULT_EXCLUDE_ANCHORED = False  # by default, anchored vessels are included in
 
 # ---------------------------------------------------------------------------
 # Safety limits — anti-ban rate limiting compliance
-# Polling faster than 30s risks MarineTraffic banning the user's IP address.
-# This constant is the hard floor enforced both in config schema and at runtime.
+# Polling faster than 30s risks MarineTraffic / VesselFinder banning the
+# user's IP address.  This constant is the hard floor for scraper-based
+# sources.  AISHub is an official API and supports faster polling.
 # ---------------------------------------------------------------------------
-MIN_UPDATE_INTERVAL = 30  # seconds — never poll faster than this
+MIN_UPDATE_INTERVAL = 30  # seconds — hard floor for scraper-based sources
+MIN_UPDATE_INTERVAL_API = 5  # seconds — hard floor for API-based sources (AISHub)
+
+# ---------------------------------------------------------------------------
+# Data source configuration
+# ---------------------------------------------------------------------------
+CONF_DATA_SOURCE = "data_source"
+CONF_FALLBACK_SOURCE = "fallback_source"
+CONF_AISHUB_API_KEY = "aishub_api_key"
+
+DATA_SOURCE_MARINETRAFFIC = "marinetraffic"
+DATA_SOURCE_AISHUB = "aishub"
+DATA_SOURCE_VESSELFINDER = "vesselfinder"
+DATA_SOURCES = [DATA_SOURCE_MARINETRAFFIC, DATA_SOURCE_AISHUB, DATA_SOURCE_VESSELFINDER]
+
+FALLBACK_SOURCE_NONE = "none"
+FALLBACK_SOURCES = [
+    FALLBACK_SOURCE_NONE,
+    DATA_SOURCE_MARINETRAFFIC,
+    DATA_SOURCE_AISHUB,
+    DATA_SOURCE_VESSELFINDER,
+]
+
+DEFAULT_DATA_SOURCE = DATA_SOURCE_MARINETRAFFIC
+DEFAULT_FALLBACK_SOURCE = FALLBACK_SOURCE_NONE
 
 # ---------------------------------------------------------------------------
 # Anchored / moored vessel handling
