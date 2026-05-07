@@ -269,13 +269,14 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             data_source = user_input.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
+            fallback = user_input.get(CONF_FALLBACK_SOURCE, FALLBACK_SOURCE_NONE)
             aishub_key = str(user_input.get(CONF_AISHUB_API_KEY, "")).strip()
 
-            # Validate: AISHub requires an API key.
-            if data_source == DATA_SOURCE_AISHUB and not aishub_key:
+            # Validate: AISHub requires an API key whether used as primary or fallback.
+            aishub_in_use = data_source == DATA_SOURCE_AISHUB or fallback == DATA_SOURCE_AISHUB
+            if aishub_in_use and not aishub_key:
                 errors[CONF_AISHUB_API_KEY] = "aishub_api_key_required"
             # Validate: fallback source must differ from primary source.
-            fallback = user_input.get(CONF_FALLBACK_SOURCE, FALLBACK_SOURCE_NONE)
             if fallback != FALLBACK_SOURCE_NONE and fallback == data_source:
                 errors[CONF_FALLBACK_SOURCE] = "fallback_same_as_primary"
 
@@ -376,12 +377,14 @@ class MarineTrafficOptionsFlow(OptionsFlow):
 
         if user_input is not None:
             data_source = user_input.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
+            fallback = user_input.get(CONF_FALLBACK_SOURCE, FALLBACK_SOURCE_NONE)
             aishub_key = str(user_input.get(CONF_AISHUB_API_KEY, "")).strip()
 
-            if data_source == DATA_SOURCE_AISHUB and not aishub_key:
+            # AISHub requires an API key whether used as primary or fallback.
+            aishub_in_use = data_source == DATA_SOURCE_AISHUB or fallback == DATA_SOURCE_AISHUB
+            if aishub_in_use and not aishub_key:
                 errors[CONF_AISHUB_API_KEY] = "aishub_api_key_required"
 
-            fallback = user_input.get(CONF_FALLBACK_SOURCE, FALLBACK_SOURCE_NONE)
             if fallback != FALLBACK_SOURCE_NONE and fallback == data_source:
                 errors[CONF_FALLBACK_SOURCE] = "fallback_same_as_primary"
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 
+import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -29,7 +30,7 @@ from .const import (
     DOMAIN,
     FALLBACK_SOURCE_NONE,
 )
-from .coordinator import MarineTrafficCoordinator
+from .coordinator import MarineTrafficCoordinator, VesselClient
 from .vesselfinder_client import VesselFinderClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,14 +38,18 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.DEVICE_TRACKER]
 
 
-def _build_client(source: str, session: object, api_key: str) -> object:
+def _build_client(
+    source: str,
+    session: aiohttp.ClientSession,
+    api_key: str,
+) -> VesselClient:
     """Instantiate the appropriate vessel data client for *source*."""
     if source == DATA_SOURCE_AISHUB:
-        return AISHubClient(session, api_key=api_key)  # type: ignore[arg-type]
+        return AISHubClient(session, api_key=api_key)
     if source == DATA_SOURCE_VESSELFINDER:
-        return VesselFinderClient(session)  # type: ignore[arg-type]
+        return VesselFinderClient(session)
     # Default / DATA_SOURCE_MARINETRAFFIC
-    return MarineTrafficClient(session)  # type: ignore[arg-type]
+    return MarineTrafficClient(session)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

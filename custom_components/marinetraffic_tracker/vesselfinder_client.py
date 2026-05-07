@@ -336,8 +336,8 @@ class VesselFinderClient:
         length: int | None = None
         if len(row) > _IDX_LENGTH:
             try:
-                l = int(row[_IDX_LENGTH])
-                length = l if l > 0 else None
+                length_int = int(row[_IDX_LENGTH])
+                length = length_int if length_int > 0 else None
             except (ValueError, TypeError):
                 length = None
 

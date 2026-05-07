@@ -24,6 +24,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .aishub_client import AISHubClient
 from .client import MarineTrafficClient, VesselData
 from .const import (
     ANCHOR_SWING_THRESHOLD_KM,
@@ -54,9 +55,15 @@ from .const import (
     MIN_UPDATE_INTERVAL_API,
     TRACKING_MODE_RADIUS,
 )
+from .vesselfinder_client import VesselFinderClient
 
 _LOGGER = logging.getLogger(__name__)
 
+# Union type representing any of the supported vessel data clients.
+# All clients expose the same async interface: get_vessels_in_radius and
+# get_vessels_in_box.  A Protocol would be cleaner, but a Union is simpler
+# and sufficient for static analysis without adding a new public module.
+VesselClient = MarineTrafficClient | AISHubClient | VesselFinderClient
 
 # ---------------------------------------------------------------------------
 # Internal geometry helper
@@ -208,8 +215,8 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
-        client: Any,
-        fallback_client: Any = None,
+        client: VesselClient,
+        fallback_client: VesselClient | None = None,
     ) -> None:
         self._client = client
         self._fallback_client = fallback_client
@@ -330,7 +337,7 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
     # ------------------------------------------------------------------
 
     async def _fetch_vessels(
-        self, client: Any, tracking_mode: str, config: dict
+        self, client: VesselClient, tracking_mode: str, config: dict
     ) -> list[VesselData] | None:
         """Attempt to fetch vessels from *client*; return ``None`` on failure.
 

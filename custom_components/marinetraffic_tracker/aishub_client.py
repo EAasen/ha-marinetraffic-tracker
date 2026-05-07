@@ -160,7 +160,16 @@ class AISHubClient:
             west=round(west, 4),
         )
 
-        _LOGGER.debug("GET AISHub %s", url)
+        # Build a log-safe URL (with the API key masked) independently, so that
+        # no tainted data flows into the log statement.
+        log_url = _AISHUB_URL.format(
+            api_key="***",
+            north=round(north, 4),
+            east=round(east, 4),
+            south=round(south, 4),
+            west=round(west, 4),
+        )
+        _LOGGER.debug("GET AISHub %s", log_url)
 
         try:
             async with self._session.get(url, timeout=_REQUEST_TIMEOUT) as resp:
@@ -309,6 +318,12 @@ class AISHubClient:
             dest_str = str(raw_dest).strip()
             destination = dest_str if dest_str else None
 
+        raw_eta = row.get("ETA")
+        eta: str | None = str(raw_eta).strip() or None if raw_eta is not None else None
+
+        raw_cs = row.get("CALLSIGN")
+        callsign: str | None = str(raw_cs).strip() or None if raw_cs is not None else None
+
         return VesselData(
             mmsi=mmsi,
             name=name,
@@ -321,10 +336,10 @@ class AISHubClient:
             status=_nav_status_to_str(row.get("NAVSTAT")),
             origin=None,  # AISHub does not provide last-port information
             destination=destination,
-            eta=str(row["ETA"]).strip() or None if row.get("ETA") else None,
+            eta=eta,
             imo=imo,
             flag=None,  # AISHub does not expose flag/country in the free API
-            callsign=str(row["CALLSIGN"]).strip() or None if row.get("CALLSIGN") else None,
+            callsign=callsign,
             rate_of_turn=rate_of_turn,
             beam=beam,
             draught=draught,
