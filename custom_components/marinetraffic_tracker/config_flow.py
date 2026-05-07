@@ -21,6 +21,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import selector
 
 from .const import (
     CONF_EAST,
@@ -47,6 +48,14 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Internal key for the location selector composite field (lat + lon + radius).
+# This is unpacked into CONF_LATITUDE / CONF_LONGITUDE / CONF_RADIUS_KM before
+# the data is stored, so it never appears in the config entry.
+_CONF_LOCATION = "location"
+
+# The LocationSelector returns radius in metres; we store it in kilometres.
+_METRES_PER_KM = 1000.0
+
 # ---------------------------------------------------------------------------
 # Schema helpers
 # ---------------------------------------------------------------------------
@@ -59,17 +68,20 @@ _STEP_MODE_SCHEMA = vol.Schema(
 
 
 def _radius_schema(defaults: dict[str, Any]) -> vol.Schema:
+    # Callers must pre-populate CONF_LATITUDE / CONF_LONGITUDE with HA home
+    # coordinates (see async_step_radius), so the 0.0 fallback here is only
+    # a safety net for misconfigured HA instances where home location is unset.
+    lat = defaults.get(CONF_LATITUDE, 0.0)
+    lon = defaults.get(CONF_LONGITUDE, 0.0)
+    radius_m = defaults.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM) * _METRES_PER_KM
     return vol.Schema(
         {
-            vol.Required(CONF_LATITUDE, default=defaults.get(CONF_LATITUDE, 0.0)): vol.Coerce(
-                float
-            ),
-            vol.Required(CONF_LONGITUDE, default=defaults.get(CONF_LONGITUDE, 0.0)): vol.Coerce(
-                float
-            ),
             vol.Required(
-                CONF_RADIUS_KM, default=defaults.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)
-            ): vol.All(vol.Coerce(float), vol.Range(min=1, max=500)),
+                _CONF_LOCATION,
+                default={"latitude": lat, "longitude": lon, "radius": radius_m},
+            ): selector.LocationSelector(
+                selector.LocationSelectorConfig(radius=True, icon="mdi:ship")
+            ),
         }
     )
 
@@ -162,14 +174,26 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
     # ------------------------------------------------------------------
 
     async def async_step_radius(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Collect center coordinates and radius."""
+        """Collect center coordinates and radius using a map-based location selector."""
         if user_input is not None:
-            self._data.update(user_input)
+            loc = user_input[_CONF_LOCATION]
+            self._data[CONF_LATITUDE] = loc["latitude"]
+            self._data[CONF_LONGITUDE] = loc["longitude"]
+            # LocationSelector(radius=True) always includes "radius" in metres.
+            self._data[CONF_RADIUS_KM] = loc["radius"] / _METRES_PER_KM
             return await self.async_step_timing()
+
+        # Pre-populate with HA home coordinates so the map opens at a sensible
+        # location rather than (0, 0).
+        defaults = {**self._data}
+        if CONF_LATITUDE not in defaults:
+            defaults[CONF_LATITUDE] = self.hass.config.latitude
+        if CONF_LONGITUDE not in defaults:
+            defaults[CONF_LONGITUDE] = self.hass.config.longitude
 
         return self.async_show_form(
             step_id="radius",
-            data_schema=_radius_schema(self._data),
+            data_schema=_radius_schema(defaults),
         )
 
     # ------------------------------------------------------------------

@@ -13,11 +13,12 @@
       },
       "radius": {
         "title": "Radius Tracking Area",
-        "description": "Enter the centre of your tracking circle and the radius.",
+        "description": "Drop a pin on the map to set your tracking area centre, then drag the circle edge to set the radius.",
         "data": {
-          "latitude": "Centre Latitude",
-          "longitude": "Centre Longitude",
-          "radius_km": "Radius (km)"
+          "location": "Tracking Area"
+        },
+        "data_description": {
+          "location": "Centre point and radius of the circular area to monitor for vessels."
         }
       },
       "box": {
