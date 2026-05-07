@@ -21,6 +21,7 @@ from .client import MarineTrafficClient
 from .const import (
     CONF_AISHUB_API_KEY,
     CONF_DATA_SOURCE,
+    CONF_EXTRA_SOURCES,
     CONF_FALLBACK_SOURCE,
     DATA_SOURCE_AISHUB,
     DATA_SOURCE_MARINETRAFFIC,
@@ -59,19 +60,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     config: dict = {**entry.data, **entry.options}
     primary_source: str = config.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
     fallback_source: str = config.get(CONF_FALLBACK_SOURCE, DEFAULT_FALLBACK_SOURCE)
+    extra_sources: list[str] = list(config.get(CONF_EXTRA_SOURCES, []))
     aishub_api_key: str = str(config.get(CONF_AISHUB_API_KEY, "")).strip()
 
     client = _build_client(primary_source, session, aishub_api_key)
     _LOGGER.debug("Primary data source: %s", primary_source)
 
+    # Build extra clients for simultaneous multi-source polling.
+    extra_clients: list[VesselClient] = []
+    for source in extra_sources:
+        if source and source != primary_source:
+            extra_clients.append(_build_client(source, session, aishub_api_key))
+            _LOGGER.debug("Extra data source: %s", source)
+
     fallback_client = None
     if fallback_source and fallback_source != FALLBACK_SOURCE_NONE:
-        # Avoid building a fallback that requires the same credentials/session
-        # as the primary when neither can work (e.g., network outage).
-        fallback_client = _build_client(fallback_source, session, aishub_api_key)
-        _LOGGER.debug("Fallback data source: %s", fallback_source)
+        # Only build a fallback if it isn't already in the extra clients list.
+        if fallback_source not in extra_sources and fallback_source != primary_source:
+            fallback_client = _build_client(fallback_source, session, aishub_api_key)
+            _LOGGER.debug("Fallback data source: %s", fallback_source)
 
-    coordinator = MarineTrafficCoordinator(hass, entry, client, fallback_client=fallback_client)
+    coordinator = MarineTrafficCoordinator(
+        hass, entry, client, fallback_client=fallback_client, extra_clients=extra_clients
+    )
 
     # Perform the first refresh so entities are available immediately.
     # If the initial fetch fails, the setup is aborted and HA will retry.

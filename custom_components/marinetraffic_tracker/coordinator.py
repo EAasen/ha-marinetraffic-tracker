@@ -205,10 +205,14 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
     ``data`` is a ``dict[mmsi, VesselData]`` representing all vessels
     currently considered active (i.e. seen within the stale timeout).
 
-    When a *fallback_client* is provided, the coordinator automatically tries
-    the fallback source whenever the primary client raises an exception.  This
-    ensures availability when one provider is temporarily unreachable or
-    returns a bad response.
+    All configured clients are polled concurrently on each cycle using
+    ``asyncio.gather``.  Results from multiple sources are merged into the
+    shared vessel registry using MMSI as the deduplication key — the
+    observation with the most recent ``last_seen`` timestamp wins when the
+    same vessel is reported by more than one source.
+
+    When a *fallback_client* is provided it is appended to the client list
+    and treated as just another concurrent source (backward-compatible shim).
     """
 
     def __init__(
@@ -217,9 +221,14 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         entry: ConfigEntry,
         client: VesselClient,
         fallback_client: VesselClient | None = None,
+        extra_clients: list[VesselClient] | None = None,
     ) -> None:
         self._client = client
         self._fallback_client = fallback_client
+        self._extra_clients: list[VesselClient] = list(extra_clients or [])
+        # Include the fallback client as a concurrent source for backward compat.
+        if fallback_client is not None and fallback_client not in self._extra_clients:
+            self._extra_clients.append(fallback_client)
         self._entry = entry
         # Running vessel registry — persists across updates.
         self._vessels: dict[str, VesselData] = {}
@@ -233,15 +242,18 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         # Entry timestamps — records when each vessel entered the zone this session.
         self._entry_times: dict[str, datetime] = {}
 
-        # Source-aware safety compliance: AISHub is an official API that allows
-        # faster polling; scrapers require a 30-second minimum to avoid IP bans.
+        # Source-aware safety compliance: if any configured source is AISHub
+        # (an official API), use the faster API floor; otherwise use the
+        # scraper floor to avoid IP bans.
         data_source = entry.options.get(
             CONF_DATA_SOURCE,
             entry.data.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE),
         )
-        min_interval = (
-            MIN_UPDATE_INTERVAL_API if data_source == DATA_SOURCE_AISHUB else MIN_UPDATE_INTERVAL
+        all_clients: list[VesselClient] = [client, *self._extra_clients]
+        has_aishub = data_source == DATA_SOURCE_AISHUB or any(
+            isinstance(c, AISHubClient) for c in all_clients
         )
+        min_interval = MIN_UPDATE_INTERVAL_API if has_aishub else MIN_UPDATE_INTERVAL
 
         try:
             raw_interval = int(
@@ -368,12 +380,15 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         before each request to spread load and avoid predictable polling
         patterns that could trigger rate limiting.
 
-        Fallback logic
-        --------------
-        When a *fallback_client* is configured, the coordinator automatically
-        retries with the fallback source whenever the primary client raises an
-        exception.  Both an error log and a debug message are emitted so the
-        user can see when fallback is being used.
+        Multi-source concurrent polling
+        --------------------------------
+        All configured clients (primary + any extra sources) are queried
+        concurrently using ``asyncio.gather``.  Results are merged into a
+        single vessel list using MMSI as the deduplication key.  When the
+        same vessel is reported by more than one source in the same poll
+        cycle, the observation with the most recent ``last_seen`` timestamp
+        wins.  Sources that fail (return ``None``) are skipped; the poll
+        only fails with ``UpdateFailed`` when *all* sources return ``None``.
 
         Anchored / moored vessel handling
         ----------------------------------
@@ -402,14 +417,46 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         config: dict = {**self._entry.data, **self._entry.options}
         tracking_mode = config.get(CONF_TRACKING_MODE, TRACKING_MODE_RADIUS)
 
-        fresh = await self._fetch_vessels(self._client, tracking_mode, config)
-        if fresh is None and self._fallback_client is not None:
-            _LOGGER.warning(
-                "Primary data source failed — switching to fallback source for this poll"
+        # Build the list of clients to poll concurrently.
+        # Primary client is always first; extra clients follow.
+        all_clients: list[VesselClient] = [self._client, *self._extra_clients]
+
+        results: list[list[VesselData] | None] = list(
+            await asyncio.gather(
+                *[self._fetch_vessels(c, tracking_mode, config) for c in all_clients],
+                return_exceptions=False,
             )
-            fresh = await self._fetch_vessels(self._fallback_client, tracking_mode, config)
-        if fresh is None:
+        )
+
+        # Log which sources succeeded / failed.
+        for idx, result in enumerate(results):
+            label = "primary" if idx == 0 else f"extra[{idx - 1}]"
+            if result is None:
+                _LOGGER.warning("Data source %s failed to return vessel data", label)
+            else:
+                _LOGGER.debug("Data source %s returned %d vessel(s)", label, len(result))
+
+        # Fail only when every source returned None.
+        if all(r is None for r in results):
             raise UpdateFailed("All configured data sources failed to return vessel data")
+
+        # Merge results: MMSI deduplication — most-recent last_seen wins.
+        # For vessels without an explicit timestamp (scrapers do not set one),
+        # the coordinator's ``now`` timestamp (set later via dataclasses.replace)
+        # will be used, so all observations from the same cycle are treated as
+        # equally fresh.  In practice, when two sources report the same MMSI
+        # the first non-None observation is kept unless a later one has a
+        # strictly newer last_seen.
+        merged: dict[str, VesselData] = {}
+        for vessel_list in results:
+            if vessel_list is None:
+                continue
+            for vessel in vessel_list:
+                existing = merged.get(vessel.mmsi)
+                if existing is None or vessel.last_seen > existing.last_seen:
+                    merged[vessel.mmsi] = vessel
+
+        fresh: list[VesselData] = list(merged.values())
 
         # Apply vessel type filter if configured.
         # Stored values may be strings (from the SelectSelector) or ints; normalise to int.

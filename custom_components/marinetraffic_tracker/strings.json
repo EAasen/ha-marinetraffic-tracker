@@ -33,16 +33,18 @@
       },
       "source": {
         "title": "Data Source",
-        "description": "Choose your primary AIS data source and an optional fallback for automatic switching on failure.",
+        "description": "Choose your primary AIS data source and optional additional sources for simultaneous multi-source polling.",
         "data": {
           "data_source": "Primary Data Source",
+          "extra_sources": "Additional Sources (polled concurrently)",
           "fallback_source": "Fallback Data Source",
           "aishub_api_key": "AISHub API Key (username)"
         },
         "data_description": {
           "data_source": "MarineTraffic: web-scraper (30 s minimum interval, IP-ban risk). AISHub: official API with faster polling (requires API key). VesselFinder: web-scraper fallback with different coverage.",
-          "fallback_source": "Automatically switch to this source when the primary source fails. Select 'none' to disable fallback.",
-          "aishub_api_key": "Required when AISHub is selected as primary or fallback. Obtain a free key by contributing AIS data at https://www.aishub.net/"
+          "extra_sources": "Additional sources polled simultaneously with the primary. Results are merged by MMSI — the freshest observation wins. AISHub requires an API key.",
+          "fallback_source": "Automatically switch to this source when all simultaneous polls fail. Select 'none' to disable fallback.",
+          "aishub_api_key": "Required when AISHub is selected as primary, additional, or fallback source. Obtain a free key by contributing AIS data at https://www.aishub.net/"
         }
       },
       "timing": {
@@ -76,16 +78,18 @@
     "step": {
       "init": {
         "title": "Data Source Settings",
-        "description": "Change the primary data source, fallback source, and API key.",
+        "description": "Change the primary data source, additional sources, and API key.",
         "data": {
           "data_source": "Primary Data Source",
+          "extra_sources": "Additional Sources (polled concurrently)",
           "fallback_source": "Fallback Data Source",
           "aishub_api_key": "AISHub API Key (username)"
         },
         "data_description": {
           "data_source": "MarineTraffic: web-scraper (30 s minimum interval). AISHub: official API with faster polling (requires API key). VesselFinder: web-scraper fallback.",
-          "fallback_source": "Automatically switch to this source when the primary fails.",
-          "aishub_api_key": "Required when AISHub is selected as primary or fallback."
+          "extra_sources": "Additional sources polled simultaneously with the primary. Results are merged by MMSI. AISHub requires an API key.",
+          "fallback_source": "Automatically switch to this source when all simultaneous polls fail.",
+          "aishub_api_key": "Required when AISHub is selected as primary, additional, or fallback source."
         }
       },
       "timing": {

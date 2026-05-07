@@ -358,6 +358,7 @@ class VesselFinderClient:
             flag=flag,
             callsign=callsign,
             length=length,
+            source="vesselfinder",
         )
 
 

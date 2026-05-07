@@ -59,6 +59,7 @@ ATTR_BEAM = "beam"
 ATTR_POSITION_HISTORY = "position_history"
 ATTR_ANCHORED_COUNT = "anchored_vessel_count"
 ATTR_ANCHORED_VESSELS = "anchored_vessels"
+ATTR_DATA_SOURCE = "data_source"
 
 # ---------------------------------------------------------------------------
 # Statistics sensor attribute keys
@@ -124,6 +125,7 @@ MIN_UPDATE_INTERVAL_API = 5  # seconds — hard floor for API-based sources (AIS
 CONF_DATA_SOURCE = "data_source"
 CONF_FALLBACK_SOURCE = "fallback_source"
 CONF_AISHUB_API_KEY = "aishub_api_key"
+CONF_EXTRA_SOURCES = "extra_sources"
 
 DATA_SOURCE_MARINETRAFFIC = "marinetraffic"
 DATA_SOURCE_AISHUB = "aishub"
