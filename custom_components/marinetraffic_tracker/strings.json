@@ -37,12 +37,14 @@
         "data": {
           "update_interval": "Update Interval (seconds)",
           "stale_timeout": "Stale Vessel Timeout (seconds)",
-          "filter_vessel_types": "Allowed Vessel Types"
+          "filter_vessel_types": "Allowed Vessel Types",
+          "exclude_anchored": "Exclude Anchored & Moored Vessels from Live Map"
         },
         "data_description": {
           "update_interval": "How often to poll MarineTraffic for vessel data. Minimum 30 seconds to reduce rate-limiting risk.",
-          "stale_timeout": "A vessel not seen for this long will be removed. Default: 600 s (10 minutes).",
-          "filter_vessel_types": "Only show vessels of the selected types. Leave empty to show all vessel types."
+          "stale_timeout": "A vessel not seen for this long will be removed. Default: 3600 s (1 hour). Max: 86400 s (24 hours).",
+          "filter_vessel_types": "Only show vessels of the selected types. Leave empty to show all vessel types.",
+          "exclude_anchored": "When enabled, vessels with 'At Anchor' or 'Moored' status are removed from the live map and device tracker entities but still appear in the Vessel Count sensor's anchored_vessels summary attribute. Position history for anchored vessels is always deduplicated to avoid recorder bloat."
         }
       }
     },
@@ -61,12 +63,14 @@
         "data": {
           "update_interval": "Update Interval (seconds)",
           "stale_timeout": "Stale Vessel Timeout (seconds)",
-          "filter_vessel_types": "Allowed Vessel Types"
+          "filter_vessel_types": "Allowed Vessel Types",
+          "exclude_anchored": "Exclude Anchored & Moored Vessels from Live Map"
         },
         "data_description": {
           "update_interval": "How often to poll MarineTraffic for vessel data. Minimum 30 seconds.",
           "stale_timeout": "A vessel not seen for this long will be removed.",
-          "filter_vessel_types": "Only show vessels of the selected types. Leave empty to show all vessel types."
+          "filter_vessel_types": "Only show vessels of the selected types. Leave empty to show all vessel types.",
+          "exclude_anchored": "When enabled, vessels with 'At Anchor' or 'Moored' status are removed from the live map and device tracker entities but still appear in the Vessel Count sensor's anchored_vessels summary attribute."
         }
       }
     }

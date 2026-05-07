@@ -24,6 +24,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import VesselData
 from .const import (
+    ATTR_ANCHORED_COUNT,
+    ATTR_ANCHORED_VESSELS,
     ATTR_BEAM,
     ATTR_BUSIEST_DAY,
     ATTR_BUSIEST_HOUR,
@@ -139,10 +141,16 @@ class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
         contains the fields most useful for a vessel information table:
         name, MMSI, type, speed, status, position, heading, destination, and
         a MarineTraffic thumbnail URL.
+        ``anchored_vessel_count`` — number of vessels currently excluded from
+        the live map because the ``exclude_anchored`` option is enabled.
+        ``anchored_vessels`` — structured list of anchored/moored vessel
+        snapshots (same format as ``vessels``).  Empty when the option is off.
         """
         vessels_data = self.coordinator.data or {}
-        vessels_list = [
-            {
+        anchored_data = self.coordinator.anchored_vessels
+
+        def _vessel_summary(v: object) -> dict:
+            return {
                 ATTR_MMSI: v.mmsi,
                 ATTR_VESSEL_NAME: v.name,
                 ATTR_VESSEL_TYPE: VESSEL_TYPE_MAP.get(v.vessel_type, f"Type {v.vessel_type}"),
@@ -154,11 +162,20 @@ class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
                 "longitude": v.longitude,
                 "entity_picture": vessel_photo_url(v.mmsi),
             }
+
+        vessels_list = [
+            _vessel_summary(v)
             for v in sorted(vessels_data.values(), key=lambda x: x.name)
+        ]
+        anchored_list = [
+            _vessel_summary(v)
+            for v in sorted(anchored_data.values(), key=lambda x: x.name)
         ]
         return {
             "vessel_mmsis": sorted(vessels_data.keys()),
             "vessels": vessels_list,
+            ATTR_ANCHORED_COUNT: len(anchored_data),
+            ATTR_ANCHORED_VESSELS: anchored_list,
         }
 
 

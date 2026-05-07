@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -24,7 +25,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .client import MarineTrafficClient, VesselData
 from .const import (
+    ANCHOR_SWING_THRESHOLD_KM,
+    ANCHORED_STATUSES,
     CONF_EAST,
+    CONF_EXCLUDE_ANCHORED,
     CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
@@ -35,6 +39,7 @@ from .const import (
     CONF_TRACKING_MODE,
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
+    DEFAULT_EXCLUDE_ANCHORED,
     DEFAULT_HISTORY_SIZE,
     DEFAULT_JITTER_MAX,
     DEFAULT_RADIUS_KM,
@@ -46,6 +51,24 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Internal geometry helper
+# ---------------------------------------------------------------------------
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return the great-circle distance in kilometres between two points."""
+    earth_radius_km = 6371.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_lat_rad = math.radians(lat2 - lat1)
+    delta_lon_rad = math.radians(lon2 - lon1)
+    a = (
+        math.sin(delta_lat_rad / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lon_rad / 2) ** 2
+    )
+    return earth_radius_km * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +194,9 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         self._entry = entry
         # Running vessel registry — persists across updates.
         self._vessels: dict[str, VesselData] = {}
+        # Anchored/moored vessel registry — used when the exclude_anchored option
+        # is enabled so these vessels are tracked but not exposed in coordinator.data.
+        self._anchored_vessels: dict[str, VesselData] = {}
         # Per-vessel position history — stores recent (lat, lon, timestamp) tuples.
         self._position_history: dict[str, list[dict]] = {}
         # Historical statistics — persists even after vessels leave the active registry.
@@ -221,6 +247,18 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             )
         )
 
+    @property
+    def anchored_vessels(self) -> dict[str, VesselData]:
+        """Return vessels currently excluded from the live map due to anchor status.
+
+        This dict is only populated when the ``exclude_anchored`` option is
+        enabled.  It provides the separate summary information requested by the
+        Anchor Toggle feature — callers such as the count sensor can expose
+        this data without the anchored vessels appearing in the main tracking
+        map or device_tracker entities.
+        """
+        return dict(self._anchored_vessels)
+
     # ------------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------------
@@ -267,6 +305,22 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         before each request to spread load and avoid predictable polling
         patterns that could trigger MarineTraffic's rate limiting.
 
+        Anchored / moored vessel handling
+        ----------------------------------
+        When ``exclude_anchored`` is enabled in options, vessels whose AIS
+        navigational status is "At Anchor" or "Moored" are tracked in a
+        separate ``_anchored_vessels`` dict instead of the main ``_vessels``
+        dict.  They do not appear in ``coordinator.data`` (so device_tracker
+        and per-vessel sensor entities are not created for them) but they are
+        still counted in statistics and exposed via the ``anchored_vessels``
+        property for use in the count sensor summary.
+
+        Regardless of the toggle, position history entries for anchored or
+        moored vessels are only recorded when the vessel has moved beyond the
+        ``ANCHOR_SWING_THRESHOLD_KM`` threshold since the last recorded
+        position.  This prevents the recorder from accumulating thousands of
+        identical data points for vessels sitting still at anchor.
+
         EXTENSION POINT: If Home Assistant ever provides a native jitter
         mechanism in DataUpdateCoordinator, the ``asyncio.sleep`` below can
         be replaced with the framework equivalent.
@@ -309,32 +363,68 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 allowed_types,
             )
 
+        exclude_anchored: bool = bool(
+            config.get(CONF_EXCLUDE_ANCHORED, DEFAULT_EXCLUDE_ANCHORED)
+        )
+
         now = datetime.now(UTC)
 
-        # Snapshot of MMSIs tracked before this update cycle.
-        previous_mmsis: set[str] = set(self._vessels.keys())
+        # Snapshot of MMSIs tracked before this update cycle (both registries).
+        previous_mmsis: set[str] = set(self._vessels.keys()) | set(self._anchored_vessels.keys())
 
-        # Merge fresh observations into the registry
+        # Merge fresh observations into the appropriate registry.
         for vessel in fresh:
             updated = replace(vessel, last_seen=now)
-            self._vessels[updated.mmsi] = updated
+            is_anchored = vessel.status in ANCHORED_STATUSES
+
+            if exclude_anchored and is_anchored:
+                # Move to (or keep in) the anchored-only registry.
+                self._anchored_vessels[updated.mmsi] = updated
+                # Remove from main registry if the vessel was previously active.
+                self._vessels.pop(updated.mmsi, None)
+            else:
+                # Normal active tracking.
+                self._vessels[updated.mmsi] = updated
+                # Remove from anchored registry if the vessel was previously anchored.
+                self._anchored_vessels.pop(updated.mmsi, None)
 
         # Record position history for each observed vessel.
+        # For anchored / moored vessels, only add a new entry when the vessel
+        # has moved beyond the anchor swing threshold — this avoids recording
+        # thousands of near-identical positions for stationary vessels.
         for vessel in fresh:
+            is_anchored = vessel.status in ANCHORED_STATUSES
+            history = self._position_history.setdefault(vessel.mmsi, [])
+
+            if is_anchored and history:
+                last = history[-1]
+                dist_km = _haversine_km(
+                    last["latitude"], last["longitude"],
+                    vessel.latitude, vessel.longitude,
+                )
+                if dist_km < ANCHOR_SWING_THRESHOLD_KM:
+                    _LOGGER.debug(
+                        "Skipping position history for anchored vessel MMSI=%s "
+                        "(moved only %.0f m < %.0f m threshold)",
+                        vessel.mmsi,
+                        dist_km * 1000,
+                        ANCHOR_SWING_THRESHOLD_KM * 1000,
+                    )
+                    continue  # vessel hasn't moved enough — skip this entry
+
             pos_entry = {
                 "latitude": vessel.latitude,
                 "longitude": vessel.longitude,
                 "timestamp": now.isoformat(),
             }
-            history = self._position_history.setdefault(vessel.mmsi, [])
             history.append(pos_entry)
             if len(history) > DEFAULT_HISTORY_SIZE:
                 self._position_history[vessel.mmsi] = history[-DEFAULT_HISTORY_SIZE:]
 
-        # Update statistics for each observed vessel.
+        # Update statistics for each observed vessel (including anchored ones).
         self._update_statistics(fresh, now)
 
-        # Fire entered events for vessels that are new this cycle.
+        # Fire entered events for vessels that are new this cycle (either registry).
         for vessel in fresh:
             if vessel.mmsi not in previous_mmsis:
                 _LOGGER.debug("Vessel entered: MMSI=%s name=%s", vessel.mmsi, vessel.name)
@@ -343,8 +433,9 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                     self._vessel_event_payload(vessel),
                 )
 
-        # Remove vessels not seen within the stale timeout
+        # Remove vessels not seen within the stale timeout from both registries.
         stale_cutoff = now - timedelta(seconds=self.stale_timeout_seconds)
+
         stale = [mmsi for mmsi, v in self._vessels.items() if v.last_seen < stale_cutoff]
         for mmsi in stale:
             departed = self._vessels[mmsi]
@@ -357,15 +448,33 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 "marinetraffic_vessel_exited",
                 self._vessel_event_payload(departed),
             )
-            # Accumulate time-in-zone when the vessel exits.
             self._accumulate_time_in_zone(mmsi, now)
             del self._vessels[mmsi]
             self._position_history.pop(mmsi, None)
 
+        stale_anchored = [
+            mmsi for mmsi, v in self._anchored_vessels.items() if v.last_seen < stale_cutoff
+        ]
+        for mmsi in stale_anchored:
+            departed = self._anchored_vessels[mmsi]
+            _LOGGER.debug(
+                "Removing stale anchored vessel MMSI=%s (last seen >%ds ago)",
+                mmsi,
+                self.stale_timeout_seconds,
+            )
+            self.hass.bus.async_fire(
+                "marinetraffic_vessel_exited",
+                self._vessel_event_payload(departed),
+            )
+            self._accumulate_time_in_zone(mmsi, now)
+            del self._anchored_vessels[mmsi]
+            self._position_history.pop(mmsi, None)
+
         _LOGGER.debug(
-            "Poll complete: %d active vessel(s), %d stale removed",
+            "Poll complete: %d active vessel(s), %d anchored, %d stale removed",
             len(self._vessels),
-            len(stale),
+            len(self._anchored_vessels),
+            len(stale) + len(stale_anchored),
         )
         return dict(self._vessels)
 

@@ -57,6 +57,8 @@ ATTR_DRAUGHT = "draught"
 ATTR_RATE_OF_TURN = "rate_of_turn"
 ATTR_BEAM = "beam"
 ATTR_POSITION_HISTORY = "position_history"
+ATTR_ANCHORED_COUNT = "anchored_vessel_count"
+ATTR_ANCHORED_VESSELS = "anchored_vessels"
 
 # ---------------------------------------------------------------------------
 # Statistics sensor attribute keys
@@ -93,6 +95,7 @@ CONF_WEST = "west"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_STALE_TIMEOUT = "stale_timeout"
 CONF_FILTER_VESSEL_TYPES = "filter_vessel_types"
+CONF_EXCLUDE_ANCHORED = "exclude_anchored"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -100,10 +103,11 @@ CONF_FILTER_VESSEL_TYPES = "filter_vessel_types"
 DEFAULT_TRACKING_MODE = TRACKING_MODE_RADIUS
 DEFAULT_RADIUS_KM = 50.0
 DEFAULT_UPDATE_INTERVAL = 60  # seconds
-DEFAULT_STALE_TIMEOUT = 600  # seconds (10 minutes)
+DEFAULT_STALE_TIMEOUT = 3600  # seconds (1 hour)
 DEFAULT_JITTER_MAX = 10  # seconds of random pre-request delay
 DEFAULT_FILTER_VESSEL_TYPES: list[str] = []  # empty = no filter (show all types)
 DEFAULT_HISTORY_SIZE = 20  # maximum position history points stored per vessel
+DEFAULT_EXCLUDE_ANCHORED = False  # by default, anchored vessels are included in live map
 
 # ---------------------------------------------------------------------------
 # Safety limits — anti-ban rate limiting compliance
@@ -111,6 +115,17 @@ DEFAULT_HISTORY_SIZE = 20  # maximum position history points stored per vessel
 # This constant is the hard floor enforced both in config schema and at runtime.
 # ---------------------------------------------------------------------------
 MIN_UPDATE_INTERVAL = 30  # seconds — never poll faster than this
+
+# ---------------------------------------------------------------------------
+# Anchored / moored vessel handling
+# ---------------------------------------------------------------------------
+# AIS navigational status strings that indicate a vessel is stationary.
+ANCHORED_STATUSES: frozenset[str] = frozenset({"At Anchor", "Moored"})
+
+# Minimum distance (km) an anchored vessel must move before a new position
+# history entry is recorded.  Accounts for normal "anchor swing" without
+# generating redundant data points.
+ANCHOR_SWING_THRESHOLD_KM = 0.1  # 100 metres
 
 # ---------------------------------------------------------------------------
 # Vessel type → MDI icon mapping (based on AIS vessel type codes)
