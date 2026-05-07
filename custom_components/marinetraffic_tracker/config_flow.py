@@ -68,6 +68,9 @@ _STEP_MODE_SCHEMA = vol.Schema(
 
 
 def _radius_schema(defaults: dict[str, Any]) -> vol.Schema:
+    # Callers must pre-populate CONF_LATITUDE / CONF_LONGITUDE with HA home
+    # coordinates (see async_step_radius), so the 0.0 fallback here is only
+    # a safety net for misconfigured HA instances where home location is unset.
     lat = defaults.get(CONF_LATITUDE, 0.0)
     lon = defaults.get(CONF_LONGITUDE, 0.0)
     radius_m = defaults.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM) * _METRES_PER_KM
@@ -176,9 +179,8 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
             loc = user_input[_CONF_LOCATION]
             self._data[CONF_LATITUDE] = loc["latitude"]
             self._data[CONF_LONGITUDE] = loc["longitude"]
-            # The LocationSelector returns the radius in metres; store as km.
-            raw_radius_m = loc.get("radius", DEFAULT_RADIUS_KM * _METRES_PER_KM)
-            self._data[CONF_RADIUS_KM] = raw_radius_m / _METRES_PER_KM
+            # LocationSelector(radius=True) always includes "radius" in metres.
+            self._data[CONF_RADIUS_KM] = loc["radius"] / _METRES_PER_KM
             return await self.async_step_timing()
 
         # Pre-populate with HA home coordinates so the map opens at a sensible
