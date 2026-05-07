@@ -7,7 +7,7 @@ without touching the coordinator or entity layers.
 
 SCHEMA NOTE:
   The live-map endpoint is observed at:
-    GET /map/getData/shipData/zoom:7/minlat:{s}/maxlat:{n}/minlon:{w}/maxlon:{e}/...
+    GET /en/ais/getData/shipData/zoom:{z}/minlat:{s}/maxlat:{n}/minlon:{w}/maxlon:{e}/...
   Response envelope (dict-format rows are the currently observed schema):
     { "data": { "rows": [ {"MMSI": ..., "LAT": ..., ...}, ... ] } }
   Update ``_parse_row`` if MarineTraffic changes the field names.
@@ -33,8 +33,8 @@ _LOGGER = logging.getLogger(__name__)
 # It is not an official API and may change without notice.  Adjust the URL
 # and ``_parse_response`` together when the format changes.
 _GRID_URL = (
-    "https://www.marinetraffic.com/map/getData/shipData"
-    "/zoom:7/minlat:{south}/maxlat:{north}/minlon:{west}/maxlon:{east}"
+    "https://www.marinetraffic.com/en/ais/getData/shipData"
+    "/zoom:{zoom}/minlat:{south}/maxlat:{north}/minlon:{west}/maxlon:{east}"
     "/land:1/fleet:0/mmsi:0/ext:1"
 )
 
@@ -61,7 +61,7 @@ _BASE_HEADERS: dict[str, str] = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
-    "Referer": "https://www.marinetraffic.com/",
+    "Referer": "https://www.marinetraffic.com/en/ais/home/",
     "Origin": "https://www.marinetraffic.com",
     "X-Requested-With": "XMLHttpRequest",
     "Connection": "keep-alive",
@@ -158,11 +158,13 @@ class MarineTrafficClient:
         cos_lat = math.cos(math.radians(latitude))
         delta_lon = radius_km / (111.0 * max(cos_lat, 0.01))
 
+        zoom = _radius_to_zoom(radius_km)
         all_vessels = await self.get_vessels_in_box(
             north=latitude + delta_lat,
             east=longitude + delta_lon,
             south=latitude - delta_lat,
             west=longitude - delta_lon,
+            zoom=zoom,
         )
 
         # Strict Haversine filter — removes corner vessels outside the circle.
@@ -186,6 +188,7 @@ class MarineTrafficClient:
         east: float,
         south: float,
         west: float,
+        zoom: int = 10,
     ) -> list[VesselData]:
         """Return vessels within the given geographic bounding box."""
         url = _GRID_URL.format(
@@ -193,6 +196,7 @@ class MarineTrafficClient:
             east=round(east, 4),
             south=round(south, 4),
             west=round(west, 4),
+            zoom=zoom,
         )
 
         # Rotate User-Agent on every request to reduce fingerprinting.
@@ -237,7 +241,7 @@ class MarineTrafficClient:
         """Parse the raw API response into a list of :class:`VesselData`.
 
         Expected response envelope (field names confirmed against the MarineTraffic
-        live-map endpoint ``/map/getData/shipData/…``)::
+        live-map endpoint ``/en/ais/getData/shipData/…``)::
 
             {
                 "data": {
@@ -382,6 +386,19 @@ class MarineTrafficClient:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _radius_to_zoom(radius_km: float) -> int:
+    """Return a map zoom level appropriate for *radius_km*.
+
+    A larger radius requires a lower zoom level to fit the area on the map;
+    a smaller radius warrants a higher zoom so the live-map endpoint returns
+    enough vessels.  The result is clamped to the range [4, 14].
+    """
+    if radius_km <= 0:
+        return 10
+    zoom = round(14.0 - math.log2(radius_km))
+    return max(4, min(14, zoom))
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

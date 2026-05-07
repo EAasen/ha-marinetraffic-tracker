@@ -6,6 +6,7 @@ from custom_components.marinetraffic_tracker.client import (
     MarineTrafficClient,
     VesselData,
     _nav_status_to_str,
+    _radius_to_zoom,
 )
 
 # ---------------------------------------------------------------------------
@@ -493,3 +494,54 @@ class TestParseResponse:
         assert v.draught == 62.0
         assert v.rate_of_turn == 5
         assert v.beam == 20  # C(12) + D(8)
+
+
+# ---------------------------------------------------------------------------
+# _radius_to_zoom: zoom level calculation
+# ---------------------------------------------------------------------------
+
+
+class TestRadiusToZoom:
+    """Tests for the _radius_to_zoom helper."""
+
+    def test_small_radius_gives_high_zoom(self) -> None:
+        """A small radius (5 km) should yield a high zoom level."""
+        zoom = _radius_to_zoom(5)
+        assert zoom >= 10
+
+    def test_large_radius_gives_low_zoom(self) -> None:
+        """A large radius (200 km) should yield a low zoom level."""
+        zoom = _radius_to_zoom(200)
+        assert zoom <= 7
+
+    def test_medium_radius(self) -> None:
+        """A 50 km radius should produce a mid-range zoom level."""
+        zoom = _radius_to_zoom(50)
+        assert 4 <= zoom <= 14
+
+    def test_zoom_clamped_at_minimum_4(self) -> None:
+        """Very large radii must not produce zoom below 4."""
+        zoom = _radius_to_zoom(100_000)
+        assert zoom == 4
+
+    def test_zoom_clamped_at_maximum_14(self) -> None:
+        """Very small radii must not produce zoom above 14."""
+        zoom = _radius_to_zoom(0.001)
+        assert zoom == 14
+
+    def test_zero_radius_returns_default(self) -> None:
+        """Zero or negative radius falls back to zoom 10."""
+        assert _radius_to_zoom(0) == 10
+        assert _radius_to_zoom(-5) == 10
+
+    def test_result_is_int(self) -> None:
+        """The return type must always be int."""
+        assert isinstance(_radius_to_zoom(50), int)
+
+    def test_larger_radius_gives_same_or_lower_zoom(self) -> None:
+        """Increasing radius must not increase zoom across multiple pairs."""
+        pairs = [(1, 10), (10, 50), (50, 100), (100, 200), (200, 500)]
+        for smaller, larger in pairs:
+            assert _radius_to_zoom(larger) <= _radius_to_zoom(smaller), (
+                f"zoom({larger} km) should be ≤ zoom({smaller} km)"
+            )
