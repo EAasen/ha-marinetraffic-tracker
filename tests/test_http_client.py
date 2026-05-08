@@ -15,8 +15,7 @@ Covers:
 
 from __future__ import annotations
 
-import math
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
@@ -25,10 +24,11 @@ from custom_components.marinetraffic_tracker.aishub_client import AISHubClient
 from custom_components.marinetraffic_tracker.client import (
     MarineTrafficClient,
     _haversine_km,
-    _nav_status_to_str,
 )
 from custom_components.marinetraffic_tracker.vesselfinder_client import (
     VesselFinderClient,
+)
+from custom_components.marinetraffic_tracker.vesselfinder_client import (
     _radius_to_zoom as vf_radius_to_zoom,
 )
 
@@ -81,12 +81,21 @@ _BASE_VF_ROW: list = [
 ]
 
 
-def _make_response_cm(status: int, json_data: object) -> MagicMock:
+def _make_response_cm(
+    status: int,
+    json_data: object | Exception,
+    *,
+    text_data: str = "",
+) -> MagicMock:
     """Return an async-context-manager mock that yields an HTTP response mock."""
     resp = MagicMock()
     resp.status = status
     resp.raise_for_status = MagicMock()
-    resp.json = AsyncMock(return_value=json_data)
+    if isinstance(json_data, Exception):
+        resp.json = AsyncMock(side_effect=json_data)
+    else:
+        resp.json = AsyncMock(return_value=json_data)
+    resp.text = AsyncMock(return_value=text_data)
 
     cm = MagicMock()
     cm.__aenter__ = AsyncMock(return_value=resp)
@@ -167,6 +176,20 @@ class TestMarineTrafficHTTP:
         client = MarineTrafficClient(session)
         with pytest.raises(aiohttp.ClientResponseError):
             await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
+
+    @pytest.mark.asyncio
+    async def test_404_endpoint_returns_empty_list(self) -> None:
+        """A dead MarineTraffic endpoint should degrade to an empty result."""
+        exc = aiohttp.ClientResponseError(
+            request_info=MagicMock(),
+            history=(),
+            status=404,
+        )
+        session = MagicMock()
+        session.get = MagicMock(return_value=_make_raise_for_status_cm(404, exc))
+        client = MarineTrafficClient(session)
+        vessels = await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
+        assert vessels == []
 
     @pytest.mark.asyncio
     async def test_network_error_reraises(self) -> None:
@@ -395,6 +418,24 @@ class TestVesselFinderHTTP:
         assert vessels[0].mmsi == "123456789"
 
     @pytest.mark.asyncio
+    async def test_text_response_returns_vessels(self) -> None:
+        """A text/tab-delimited map response must be parsed successfully."""
+        session = MagicMock()
+        session.get = MagicMock(
+            return_value=_make_response_cm(
+                200,
+                aiohttp.ContentTypeError(MagicMock(), ()),
+                text_data="35940000\t6420000\t910\t12.5\t90\t123456789\t0\tTEST VESSEL\n",
+            )
+        )
+        client = VesselFinderClient(session)
+        vessels = await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
+        assert len(vessels) == 1
+        assert vessels[0].mmsi == "123456789"
+        assert vessels[0].latitude == pytest.approx(59.9)
+        assert vessels[0].longitude == pytest.approx(10.7)
+
+    @pytest.mark.asyncio
     async def test_429_response_returns_empty_list(self) -> None:
         """A 429 Too Many Requests must return an empty list (not raise)."""
         resp = MagicMock()
@@ -415,15 +456,29 @@ class TestVesselFinderHTTP:
         exc = aiohttp.ClientResponseError(
             request_info=MagicMock(),
             history=(),
-            status=403,
+            status=500,
         )
         session = MagicMock()
         session.get = MagicMock(
-            return_value=_make_raise_for_status_cm(403, exc)
+            return_value=_make_raise_for_status_cm(500, exc)
         )
         client = VesselFinderClient(session)
         with pytest.raises(aiohttp.ClientResponseError):
             await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
+
+    @pytest.mark.asyncio
+    async def test_404_endpoint_returns_empty_list(self) -> None:
+        """A dead VesselFinder endpoint should degrade to an empty result."""
+        exc = aiohttp.ClientResponseError(
+            request_info=MagicMock(),
+            history=(),
+            status=404,
+        )
+        session = MagicMock()
+        session.get = MagicMock(return_value=_make_raise_for_status_cm(404, exc))
+        client = VesselFinderClient(session)
+        vessels = await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
+        assert vessels == []
 
     @pytest.mark.asyncio
     async def test_network_error_reraises(self) -> None:

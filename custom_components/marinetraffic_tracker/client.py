@@ -20,6 +20,7 @@ import math
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from json import JSONDecodeError, loads
 from typing import Any
 
 import aiohttp
@@ -32,10 +33,17 @@ _LOGGER = logging.getLogger(__name__)
 # NOTE: This URL is derived from observing MarineTraffic's public web app.
 # It is not an official API and may change without notice.  Adjust the URL
 # and ``_parse_response`` together when the format changes.
-_GRID_URL = (
-    "https://www.marinetraffic.com/en/ais/getData/shipData"
-    "/zoom:{zoom}/minlat:{south}/maxlat:{north}/minlon:{west}/maxlon:{east}"
-    "/land:1/fleet:0/mmsi:0/ext:1"
+_GRID_URLS: tuple[str, ...] = (
+    (
+        "https://www.marinetraffic.com/en/ais/getData/shipData"
+        "/zoom:{zoom}/minlat:{south}/maxlat:{north}/minlon:{west}/maxlon:{east}"
+        "/land:1/fleet:0/mmsi:0/ext:1"
+    ),
+    (
+        "https://www.marinetraffic.com/map/getData"
+        "?zoom={zoom}&minlat={south}&maxlat={north}&minlon={west}&maxlon={east}"
+        "&type=json&v=5"
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -61,6 +69,8 @@ _BASE_HEADERS: dict[str, str] = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
     "Referer": "https://www.marinetraffic.com/en/ais/home/",
     "Origin": "https://www.marinetraffic.com",
     "X-Requested-With": "XMLHttpRequest",
@@ -71,6 +81,7 @@ _BASE_HEADERS: dict[str, str] = {
 }
 
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20)
+_EMPTY_RESULT_HTTP_STATUSES: frozenset[int] = frozenset({403, 404, 410})
 
 
 # ---------------------------------------------------------------------------
@@ -194,45 +205,66 @@ class MarineTrafficClient:
         zoom: int = 10,
     ) -> list[VesselData]:
         """Return vessels within the given geographic bounding box."""
-        url = _GRID_URL.format(
-            north=round(north, 4),
-            east=round(east, 4),
-            south=round(south, 4),
-            west=round(west, 4),
-            zoom=zoom,
-        )
-
         # Rotate User-Agent on every request to reduce fingerprinting.
         user_agent = secrets.choice(_USER_AGENTS)
         headers = {**_BASE_HEADERS, "User-Agent": user_agent}
-        _LOGGER.debug("GET %s", url)
+        urls = [
+            template.format(
+                north=round(north, 4),
+                east=round(east, 4),
+                south=round(south, 4),
+                west=round(west, 4),
+                zoom=zoom,
+            )
+            for template in _GRID_URLS
+        ]
 
-        try:
-            async with self._session.get(
-                url,
-                headers=headers,
-                timeout=_REQUEST_TIMEOUT,
-            ) as resp:
-                _LOGGER.debug("MarineTraffic responded with HTTP %s", resp.status)
-                if resp.status == 429:
-                    _LOGGER.warning(
-                        "MarineTraffic returned 429 Too Many Requests — "
-                        "consider increasing CONF_UPDATE_INTERVAL"
-                    )
+        last_http_error: aiohttp.ClientResponseError | None = None
+        for idx, url in enumerate(urls):
+            _LOGGER.debug("GET %s", url)
+            try:
+                async with self._session.get(
+                    url,
+                    headers=headers,
+                    timeout=_REQUEST_TIMEOUT,
+                ) as resp:
+                    _LOGGER.debug("MarineTraffic responded with HTTP %s", resp.status)
+                    if resp.status == 429:
+                        _LOGGER.warning(
+                            "MarineTraffic returned 429 Too Many Requests — "
+                            "consider increasing CONF_UPDATE_INTERVAL"
+                        )
+                        return []
+                    if resp.status in _EMPTY_RESULT_HTTP_STATUSES:
+                        _LOGGER.warning(
+                            "MarineTraffic endpoint returned HTTP %s for %s",
+                            resp.status,
+                            url,
+                        )
+                        if idx < len(urls) - 1:
+                            continue
+                        return []
+
+                    resp.raise_for_status()
+                    return self._parse_response(await _read_json_or_text(resp))
+            except aiohttp.ClientResponseError as exc:
+                last_http_error = exc
+                _LOGGER.error("MarineTraffic returned HTTP %s for %s", exc.status, url)
+                if exc.status in _EMPTY_RESULT_HTTP_STATUSES and idx < len(urls) - 1:
+                    continue
+                if exc.status in _EMPTY_RESULT_HTTP_STATUSES:
                     return []
-                resp.raise_for_status()
-                raw = await resp.json(content_type=None)
-        except aiohttp.ClientResponseError as exc:
-            _LOGGER.error("MarineTraffic returned HTTP %s for %s", exc.status, url)
-            raise
-        except aiohttp.ClientError as exc:
-            _LOGGER.error("Network error fetching MarineTraffic data: %s", exc)
-            raise
-        except Exception as exc:  # noqa: BLE001
-            _LOGGER.error("Unexpected error during MarineTraffic fetch: %s", exc)
-            raise
+                raise
+            except aiohttp.ClientError as exc:
+                _LOGGER.error("Network error fetching MarineTraffic data: %s", exc)
+                raise
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.error("Unexpected error during MarineTraffic fetch: %s", exc)
+                raise
 
-        return self._parse_response(raw)
+        if last_http_error is not None:
+            raise last_http_error
+        return []
 
     # ------------------------------------------------------------------
     # EXTENSION POINT — parser
@@ -445,3 +477,15 @@ def _nav_status_to_str(code: Any) -> str | None:
         return _STATUS_MAP.get(int(code))
     except (ValueError, TypeError):
         return None
+
+
+async def _read_json_or_text(resp: aiohttp.ClientResponse) -> Any:
+    """Return JSON-decoded response content, falling back to plain text parsing."""
+    try:
+        return await resp.json(content_type=None)
+    except (JSONDecodeError, aiohttp.ContentTypeError):
+        text = await resp.text()
+        try:
+            return loads(text)
+        except JSONDecodeError:
+            return text

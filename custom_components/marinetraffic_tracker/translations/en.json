@@ -33,7 +33,7 @@
       },
       "source": {
         "title": "Data Source",
-        "description": "Choose your primary AIS data source and optional additional sources for simultaneous multi-source polling.",
+        "description": "Choose your primary AIS data source, optional additional sources, and an optional fallback source for scraper failures.",
         "data": {
           "data_source": "Primary Data Source",
           "extra_sources": "Additional Sources (polled concurrently)",
@@ -41,9 +41,9 @@
           "aishub_api_key": "AISHub API Key (username)"
         },
         "data_description": {
-          "data_source": "MarineTraffic: web-scraper (30 s minimum interval, IP-ban risk). AISHub: official API with faster polling (requires API key). VesselFinder: web-scraper fallback with different coverage.",
-          "extra_sources": "Additional sources polled simultaneously with the primary. Results are merged by MMSI — the freshest observation wins. AISHub requires an API key.",
-          "fallback_source": "Automatically switch to this source when all simultaneous polls fail. Select 'none' to disable fallback.",
+          "data_source": "MarineTraffic and VesselFinder use live-map scraping and may occasionally be blocked or return no vessels. AISHub uses an official API and requires an API key.",
+          "extra_sources": "Additional sources are polled alongside the primary source. Results are merged by MMSI and the freshest observation wins. AISHub requires an API key.",
+          "fallback_source": "Use this source only when the primary and additional sources return no vessel data. Select 'None' to disable fallback.",
           "aishub_api_key": "Required when AISHub is selected as primary, additional, or fallback source. Obtain a free key by contributing AIS data at https://www.aishub.net/"
         }
       },
@@ -78,7 +78,7 @@
     "step": {
       "init": {
         "title": "Data Source Settings",
-        "description": "Change the primary data source, additional sources, and API key.",
+        "description": "Change the primary data source, optional additional sources, fallback behavior, and AISHub API key.",
         "data": {
           "data_source": "Primary Data Source",
           "extra_sources": "Additional Sources (polled concurrently)",
@@ -86,9 +86,9 @@
           "aishub_api_key": "AISHub API Key (username)"
         },
         "data_description": {
-          "data_source": "MarineTraffic: web-scraper (30 s minimum interval). AISHub: official API with faster polling (requires API key). VesselFinder: web-scraper fallback.",
-          "extra_sources": "Additional sources polled simultaneously with the primary. Results are merged by MMSI. AISHub requires an API key.",
-          "fallback_source": "Automatically switch to this source when all simultaneous polls fail.",
+          "data_source": "MarineTraffic and VesselFinder use live-map scraping. AISHub uses an official API and requires an API key.",
+          "extra_sources": "Additional sources are polled alongside the primary source and merged by MMSI. AISHub requires an API key.",
+          "fallback_source": "Use this source only when the primary and additional sources return no vessel data.",
           "aishub_api_key": "Required when AISHub is selected as primary, additional, or fallback source."
         }
       },
