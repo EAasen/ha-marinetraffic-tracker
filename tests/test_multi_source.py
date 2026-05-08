@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.marinetraffic_tracker.aishub_client import AISHubClient
 from custom_components.marinetraffic_tracker.client import VesselData
@@ -26,10 +27,8 @@ from custom_components.marinetraffic_tracker.const import (
     MIN_UPDATE_INTERVAL_API,
 )
 from custom_components.marinetraffic_tracker.coordinator import MarineTrafficCoordinator
-from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from .conftest import MOCK_VESSEL_CARGO, MOCK_VESSEL_TANKER, MOCK_VESSEL_PASSENGER
-
+from .conftest import MOCK_VESSEL_CARGO, MOCK_VESSEL_PASSENGER, MOCK_VESSEL_TANKER
 
 # ---------------------------------------------------------------------------
 # Helpers

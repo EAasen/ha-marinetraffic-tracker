@@ -1,12 +1,12 @@
 {
   "domain": "marinetraffic_tracker",
   "name": "MarineTraffic Tracker",
-  "version": "0.1.0",
+  "codeowners": ["@EAasen"],
   "config_flow": true,
+  "dependencies": [],
   "documentation": "https://github.com/EAasen/ha-marinetraffic-tracker",
+  "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/EAasen/ha-marinetraffic-tracker/issues",
   "requirements": [],
-  "dependencies": [],
-  "codeowners": ["@EAasen"],
-  "iot_class": "cloud_polling"
+  "version": "0.1.0"
 }
