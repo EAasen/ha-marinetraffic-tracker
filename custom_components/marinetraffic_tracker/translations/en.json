@@ -44,7 +44,7 @@
           "data_source": "MarineTraffic and VesselFinder use live-map scraping and may occasionally be blocked or return no vessels. AISHub uses an official API and requires an API key.",
           "extra_sources": "Additional sources are polled alongside the primary source. Results are merged by MMSI and the freshest observation wins. AISHub requires an API key.",
           "fallback_source": "Use this source only when the primary and additional sources return no vessel data. Select 'None' to disable fallback.",
-          "aishub_api_key": "Required when AISHub is selected as primary, additional, or fallback source. Obtain a free key by contributing AIS data at https://www.aishub.net/"
+          "aishub_api_key": "Required when AISHub is selected as primary, additional, or fallback source. Obtain a free key by contributing AIS data to aishub.net."
         }
       },
       "timing": {

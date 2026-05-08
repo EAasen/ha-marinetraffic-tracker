@@ -155,8 +155,12 @@ class AreaStatistics:
             }
 
         # Busiest hour / day
-        busiest_hour = self.hourly_counts.index(max(self.hourly_counts)) if any(self.hourly_counts) else None
-        busiest_day = self.daily_counts.index(max(self.daily_counts)) if any(self.daily_counts) else None
+        busiest_hour = (
+            self.hourly_counts.index(max(self.hourly_counts)) if any(self.hourly_counts) else None
+        )
+        busiest_day = (
+            self.daily_counts.index(max(self.daily_counts)) if any(self.daily_counts) else None
+        )
 
         return {
             "most_frequent_visitor": most_frequent,

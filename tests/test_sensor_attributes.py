@@ -345,7 +345,7 @@ class TestCountSensorVesselsAttribute:
 
     from custom_components.marinetraffic_tracker.sensor import MarineTrafficCountSensor
 
-    def _make_count_sensor(self, vessels: dict) -> "MarineTrafficCountSensor":
+    def _make_count_sensor(self, vessels: dict) -> MarineTrafficCountSensor:
         from custom_components.marinetraffic_tracker.sensor import MarineTrafficCountSensor
 
         coord = MagicMock()
