@@ -127,7 +127,7 @@ CONF_FALLBACK_SOURCE = "fallback_source"
 CONF_AISHUB_API_KEY = "aishub_api_key"
 CONF_EXTRA_SOURCES = "extra_sources"
 CONF_BARENTSWATCH_CLIENT_ID = "barentswatch_client_id"
-CONF_BARENTSWATCH_CLIENT_SECRET = "barentswatch_client_secret"
+CONF_BARENTSWATCH_CLIENT_SECRET = "barentswatch_client_secret"  # noqa: S105
 
 DATA_SOURCE_KYSTVERKET = "kystverket"
 DATA_SOURCE_MARINETRAFFIC = "marinetraffic"

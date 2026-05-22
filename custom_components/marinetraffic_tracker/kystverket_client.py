@@ -15,7 +15,7 @@ from .client import VesselData, _haversine_km, _nav_status_to_str
 
 _LOGGER = logging.getLogger(__name__)
 
-_TOKEN_URL = "https://id.barentswatch.no/connect/token"
+_TOKEN_URL = "https://id.barentswatch.no/connect/token"  # noqa: S105
 _VESSELS_URL = "https://live.ais.barentswatch.no/v1/combined"
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=60)
 _TOKEN_REFRESH_BUFFER = 60

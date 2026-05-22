@@ -121,10 +121,22 @@ def _box_schema(defaults: dict[str, Any]) -> vol.Schema:
     west = defaults.get(CONF_WEST, round(suggested_lon - 0.8, 4))
     return vol.Schema(
         {
-            vol.Required(CONF_NORTH, default=north): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
-            vol.Required(CONF_EAST, default=east): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
-            vol.Required(CONF_SOUTH, default=south): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
-            vol.Required(CONF_WEST, default=west): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+            vol.Required(CONF_NORTH, default=north): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=-90, max=90),
+            ),
+            vol.Required(CONF_EAST, default=east): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=-180, max=180),
+            ),
+            vol.Required(CONF_SOUTH, default=south): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=-90, max=90),
+            ),
+            vol.Required(CONF_WEST, default=west): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=-180, max=180),
+            ),
         }
     )
 
