@@ -1,20 +1,7 @@
-"""Config flow for MarineTraffic Tracker.
-
-The flow is split into four steps so the UI remains focused:
-
-1. ``user``   — choose tracking mode (radius or bounding box).
-2. ``radius`` / ``box`` — enter the geographic parameters for the chosen mode.
-3. ``source`` — choose the primary data source, optional fallback, and API key.
-4. ``timing`` — configure the update interval and stale vessel timeout.
-
-An options flow (``MarineTrafficOptionsFlow``) allows users to adjust the
-source and timing parameters after the integration has been set up without
-needing to remove and re-add it.  Geographic parameters require a re-setup.
-"""
+"""Config flow for Norwegian Maritime Tracker."""
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import voluptuous as vol
@@ -24,12 +11,11 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
 from .const import (
-    CONF_AISHUB_API_KEY,
+    CONF_BARENTSWATCH_CLIENT_ID,
+    CONF_BARENTSWATCH_CLIENT_SECRET,
     CONF_DATA_SOURCE,
     CONF_EAST,
     CONF_EXCLUDE_ANCHORED,
-    CONF_EXTRA_SOURCES,
-    CONF_FALLBACK_SOURCE,
     CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
@@ -40,56 +26,39 @@ from .const import (
     CONF_TRACKING_MODE,
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
-    DATA_SOURCE_AISHUB,
-    DEFAULT_DATA_SOURCE,
+    DATA_SOURCE_KYSTVERKET,
     DEFAULT_EXCLUDE_ANCHORED,
-    DEFAULT_FALLBACK_SOURCE,
     DEFAULT_RADIUS_KM,
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_TRACKING_MODE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
-    FALLBACK_SOURCE_NONE,
-    MIN_UPDATE_INTERVAL,
     MIN_UPDATE_INTERVAL_API,
+    TRACKING_MODE_BOX,
     TRACKING_MODE_RADIUS,
     VESSEL_TYPE_LABELS,
 )
 
-_LOGGER = logging.getLogger(__name__)
-
-# Internal key for the location selector composite field (lat + lon + radius).
-# This is unpacked into CONF_LATITUDE / CONF_LONGITUDE / CONF_RADIUS_KM before
-# the data is stored, so it never appears in the config entry.
 _CONF_LOCATION = "location"
+_METRES_PER_KM = 1000.0
+_NORWAY_LATITUDE = 60.4720
+_NORWAY_LONGITUDE = 8.4689
+_NORWAY_BOUNDS = {
+    "north": 71.5,
+    "south": 57.0,
+    "east": 32.0,
+    "west": 4.0,
+}
 
 _TRACKING_MODE_OPTIONS: list[selector.SelectOptionDict] = [
     selector.SelectOptionDict(value=TRACKING_MODE_RADIUS, label="Radius (map selector)"),
-    selector.SelectOptionDict(value="box", label="Bounding box"),
-]
-
-_DATA_SOURCE_OPTIONS: list[selector.SelectOptionDict] = [
-    selector.SelectOptionDict(value="marinetraffic", label="MarineTraffic"),
-    selector.SelectOptionDict(value="aishub", label="AISHub"),
-    selector.SelectOptionDict(value="vesselfinder", label="VesselFinder"),
-]
-
-_FALLBACK_SOURCE_OPTIONS: list[selector.SelectOptionDict] = [
-    selector.SelectOptionDict(value=FALLBACK_SOURCE_NONE, label="None"),
-    *_DATA_SOURCE_OPTIONS,
+    selector.SelectOptionDict(value=TRACKING_MODE_BOX, label="Bounding box"),
 ]
 
 _VESSEL_TYPE_OPTIONS: list[selector.SelectOptionDict] = [
     selector.SelectOptionDict(value=value, label=label)
     for value, label in VESSEL_TYPE_LABELS.items()
 ]
-
-# The LocationSelector returns radius in metres; we store it in kilometres.
-_METRES_PER_KM = 1000.0
-
-# ---------------------------------------------------------------------------
-# Schema helpers
-# ---------------------------------------------------------------------------
 
 _STEP_MODE_SCHEMA = vol.Schema(
     {
@@ -103,55 +72,33 @@ _STEP_MODE_SCHEMA = vol.Schema(
 )
 
 
-def _source_schema(defaults: dict[str, Any]) -> vol.Schema:
-    """Schema for the data source selection step."""
-    data_source = defaults.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
-    fallback_source = defaults.get(CONF_FALLBACK_SOURCE, DEFAULT_FALLBACK_SOURCE)
-    aishub_api_key = defaults.get(CONF_AISHUB_API_KEY, "")
-    extra_sources = defaults.get(CONF_EXTRA_SOURCES, [])
-    return vol.Schema(
-        {
-            vol.Required(CONF_DATA_SOURCE, default=data_source): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=_DATA_SOURCE_OPTIONS,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Optional(
-                CONF_EXTRA_SOURCES,
-                default=extra_sources,
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=_DATA_SOURCE_OPTIONS,
-                    multiple=True,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Optional(
-                CONF_FALLBACK_SOURCE,
-                default=fallback_source,
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=_FALLBACK_SOURCE_OPTIONS,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Optional(
-                CONF_AISHUB_API_KEY,
-                default=aishub_api_key,
-            ): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-        }
+def _is_within_norway(latitude: float | None, longitude: float | None) -> bool:
+    """Return whether coordinates fall within a broad Norwegian bounding box."""
+    if latitude is None or longitude is None:
+        return False
+    return (
+        _NORWAY_BOUNDS["south"] <= latitude <= _NORWAY_BOUNDS["north"]
+        and _NORWAY_BOUNDS["west"] <= longitude <= _NORWAY_BOUNDS["east"]
     )
 
 
-def _radius_schema(defaults: dict[str, Any]) -> vol.Schema:
-    # Callers must pre-populate CONF_LATITUDE / CONF_LONGITUDE with HA home
-    # coordinates (see async_step_radius), so the 0.0 fallback here is only
-    # a safety net for misconfigured HA instances where home location is unset.
-    lat = defaults.get(CONF_LATITUDE, 0.0)
-    lon = defaults.get(CONF_LONGITUDE, 0.0)
+def _source_defaults(hass: Any, defaults: dict[str, Any]) -> tuple[float, float]:
+    """Return sensible Norwegian coordinates for the selector default."""
+    lat = defaults.get(CONF_LATITUDE)
+    lon = defaults.get(CONF_LONGITUDE)
+    if _is_within_norway(lat, lon):
+        return float(lat), float(lon)
+
+    hass_lat = getattr(hass.config, "latitude", None)
+    hass_lon = getattr(hass.config, "longitude", None)
+    if _is_within_norway(hass_lat, hass_lon):
+        return float(hass_lat), float(hass_lon)
+
+    return _NORWAY_LATITUDE, _NORWAY_LONGITUDE
+
+
+def _radius_schema(hass: Any, defaults: dict[str, Any]) -> vol.Schema:
+    lat, lon = _source_defaults(hass, defaults)
     radius_m = defaults.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM) * _METRES_PER_KM
     return vol.Schema(
         {
@@ -159,60 +106,53 @@ def _radius_schema(defaults: dict[str, Any]) -> vol.Schema:
                 _CONF_LOCATION,
                 default={"latitude": lat, "longitude": lon, "radius": radius_m},
             ): selector.LocationSelector(
-                selector.LocationSelectorConfig(radius=True, icon="mdi:ship")
+                selector.LocationSelectorConfig(radius=True, icon="mdi:ferry")
             ),
         }
     )
 
 
 def _box_schema(defaults: dict[str, Any]) -> vol.Schema:
+    suggested_lat = float(defaults.get(CONF_LATITUDE, _NORWAY_LATITUDE))
+    suggested_lon = float(defaults.get(CONF_LONGITUDE, _NORWAY_LONGITUDE))
+    north = defaults.get(CONF_NORTH, round(suggested_lat + 0.4, 4))
+    south = defaults.get(CONF_SOUTH, round(suggested_lat - 0.4, 4))
+    east = defaults.get(CONF_EAST, round(suggested_lon + 0.8, 4))
+    west = defaults.get(CONF_WEST, round(suggested_lon - 0.8, 4))
     return vol.Schema(
         {
-            vol.Required(CONF_NORTH, default=defaults.get(CONF_NORTH, 0.0)): vol.All(
-                vol.Coerce(float), vol.Range(min=-90, max=90)
-            ),
-            vol.Required(CONF_EAST, default=defaults.get(CONF_EAST, 0.0)): vol.All(
-                vol.Coerce(float), vol.Range(min=-180, max=180)
-            ),
-            vol.Required(CONF_SOUTH, default=defaults.get(CONF_SOUTH, 0.0)): vol.All(
-                vol.Coerce(float), vol.Range(min=-90, max=90)
-            ),
-            vol.Required(CONF_WEST, default=defaults.get(CONF_WEST, 0.0)): vol.All(
-                vol.Coerce(float), vol.Range(min=-180, max=180)
-            ),
+            vol.Required(CONF_NORTH, default=north): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+            vol.Required(CONF_EAST, default=east): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+            vol.Required(CONF_SOUTH, default=south): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+            vol.Required(CONF_WEST, default=west): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
         }
     )
 
 
 def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
-    # Anti-ban safety compliance: use source-aware minimum interval.
-    # AISHub is an official API and supports faster polling.
-    data_source = defaults.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
-    extra_sources = defaults.get(CONF_EXTRA_SOURCES, [])
-    all_sources = [data_source] + list(extra_sources)
-    min_interval = (
-        MIN_UPDATE_INTERVAL_API if DATA_SOURCE_AISHUB in all_sources else MIN_UPDATE_INTERVAL
-    )
     try:
         raw_interval = int(defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
     except (ValueError, TypeError):
         raw_interval = DEFAULT_UPDATE_INTERVAL
-    safe_interval = max(raw_interval, min_interval)
-    if safe_interval != raw_interval:
-        _LOGGER.warning(
-            "Update interval %ds is below the %ds hard floor for source '%s'. "
-            "Overriding to %ds.",
-            raw_interval,
-            min_interval,
-            data_source,
-            min_interval,
-        )
+
     return vol.Schema(
         {
             vol.Required(
+                CONF_BARENTSWATCH_CLIENT_ID,
+                default=defaults.get(CONF_BARENTSWATCH_CLIENT_ID, ""),
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
+            vol.Required(
+                CONF_BARENTSWATCH_CLIENT_SECRET,
+                default=defaults.get(CONF_BARENTSWATCH_CLIENT_SECRET, ""),
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+            vol.Required(
                 CONF_UPDATE_INTERVAL,
-                default=safe_interval,
-            ): vol.All(int, vol.Range(min=min_interval, max=3600)),
+                default=max(raw_interval, MIN_UPDATE_INTERVAL_API),
+            ): vol.All(int, vol.Range(min=MIN_UPDATE_INTERVAL_API, max=3600)),
             vol.Required(
                 CONF_STALE_TIMEOUT,
                 default=defaults.get(CONF_STALE_TIMEOUT, DEFAULT_STALE_TIMEOUT),
@@ -235,71 +175,41 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
     )
 
 
-# ---------------------------------------------------------------------------
-# Config flow
-# ---------------------------------------------------------------------------
-
-
 class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a UI config flow for MarineTraffic Tracker."""
+    """Handle a UI config flow for Norwegian Maritime Tracker."""
 
     VERSION = 1
 
     def __init__(self) -> None:
-        self._data: dict[str, Any] = {}
-
-    # ------------------------------------------------------------------
-    # Step 1: choose mode
-    # ------------------------------------------------------------------
+        self._data: dict[str, Any] = {CONF_DATA_SOURCE: DATA_SOURCE_KYSTVERKET}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Present the tracking mode selector."""
+        """Choose the tracking mode."""
         if user_input is not None:
             self._data[CONF_TRACKING_MODE] = user_input[CONF_TRACKING_MODE]
             if user_input[CONF_TRACKING_MODE] == TRACKING_MODE_RADIUS:
                 return await self.async_step_radius()
             return await self.async_step_box()
 
-        return self.async_show_form(
-            step_id="user",
-            data_schema=_STEP_MODE_SCHEMA,
-        )
-
-    # ------------------------------------------------------------------
-    # Step 2a: radius parameters
-    # ------------------------------------------------------------------
+        return self.async_show_form(step_id="user", data_schema=_STEP_MODE_SCHEMA)
 
     async def async_step_radius(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Collect center coordinates and radius using a map-based location selector."""
+        """Collect center coordinates and radius."""
         if user_input is not None:
             loc = user_input[_CONF_LOCATION]
             self._data[CONF_LATITUDE] = loc["latitude"]
             self._data[CONF_LONGITUDE] = loc["longitude"]
-            # LocationSelector(radius=True) always includes "radius" in metres.
             self._data[CONF_RADIUS_KM] = loc["radius"] / _METRES_PER_KM
-            return await self.async_step_source()
-
-        # Pre-populate with HA home coordinates so the map opens at a sensible
-        # location rather than (0, 0).
-        defaults = {**self._data}
-        if CONF_LATITUDE not in defaults:
-            defaults[CONF_LATITUDE] = self.hass.config.latitude
-        if CONF_LONGITUDE not in defaults:
-            defaults[CONF_LONGITUDE] = self.hass.config.longitude
+            return await self.async_step_timing()
 
         return self.async_show_form(
             step_id="radius",
-            data_schema=_radius_schema(defaults),
+            data_schema=_radius_schema(self.hass, self._data),
         )
-
-    # ------------------------------------------------------------------
-    # Step 2b: bounding box parameters
-    # ------------------------------------------------------------------
 
     async def async_step_box(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Collect bounding box coordinates."""
         errors: dict[str, str] = {}
-
         if user_input is not None:
             if user_input[CONF_SOUTH] >= user_input[CONF_NORTH]:
                 errors["base"] = "south_gte_north"
@@ -307,113 +217,70 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "west_gte_east"
             else:
                 self._data.update(user_input)
-                return await self.async_step_source()
+                return await self.async_step_timing()
 
+        defaults = dict(self._data)
+        lat, lon = _source_defaults(self.hass, defaults)
+        defaults.setdefault(CONF_LATITUDE, lat)
+        defaults.setdefault(CONF_LONGITUDE, lon)
         return self.async_show_form(
             step_id="box",
-            data_schema=_box_schema(self._data),
+            data_schema=_box_schema(defaults),
             errors=errors,
         )
 
-    # ------------------------------------------------------------------
-    # Step 3: data source selection
-    # ------------------------------------------------------------------
-
-    async def async_step_source(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Collect primary data source, fallback source, and optional AISHub API key."""
+    async def async_step_timing(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Collect Kystverket credentials and polling settings."""
         errors: dict[str, str] = {}
-
         if user_input is not None:
-            data_source = user_input.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
-            fallback = user_input.get(CONF_FALLBACK_SOURCE, FALLBACK_SOURCE_NONE)
-            extra_sources: list[str] = list(user_input.get(CONF_EXTRA_SOURCES, []))
-            aishub_key = str(user_input.get(CONF_AISHUB_API_KEY, "")).strip()
+            client_id = str(user_input.get(CONF_BARENTSWATCH_CLIENT_ID, "")).strip()
+            client_secret = str(user_input.get(CONF_BARENTSWATCH_CLIENT_SECRET, "")).strip()
 
-            # Validate: AISHub requires an API key whether used as primary, extra, or fallback.
-            all_sources = [data_source] + extra_sources + (
-                [fallback] if fallback != FALLBACK_SOURCE_NONE else []
-            )
-            aishub_in_use = DATA_SOURCE_AISHUB in all_sources
-            if aishub_in_use and not aishub_key:
-                errors[CONF_AISHUB_API_KEY] = "aishub_api_key_required"
-            # Validate: fallback source must differ from primary source.
-            if fallback != FALLBACK_SOURCE_NONE and fallback == data_source:
-                errors[CONF_FALLBACK_SOURCE] = "fallback_same_as_primary"
+            if not client_id:
+                errors[CONF_BARENTSWATCH_CLIENT_ID] = "barentswatch_client_id_required"
+            if not client_secret:
+                errors[CONF_BARENTSWATCH_CLIENT_SECRET] = "barentswatch_client_secret_required"
 
             if not errors:
                 self._data.update(user_input)
-                # Normalise API key storage.
-                self._data[CONF_AISHUB_API_KEY] = aishub_key
-                self._data[CONF_EXTRA_SOURCES] = extra_sources
-                return await self.async_step_timing()
-
-        return self.async_show_form(
-            step_id="source",
-            data_schema=_source_schema(self._data),
-            errors=errors,
-        )
-
-    # ------------------------------------------------------------------
-    # Step 4: timing / polling parameters
-    # ------------------------------------------------------------------
-
-    async def async_step_timing(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Collect update interval and stale vessel timeout."""
-        if user_input is not None:
-            self._data.update(user_input)
-
-            # Build a unique ID from the geographic parameters and data source set
-            # so that the same tracking area can be configured with different
-            # source combinations without triggering the duplicate-entry guard.
-            mode = self._data.get(CONF_TRACKING_MODE, TRACKING_MODE_RADIUS)
-            primary = self._data.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
-            extras: list[str] = list(self._data.get(CONF_EXTRA_SOURCES, []))
-            all_sources_sorted = "-".join(sorted({primary, *extras}))
-
-            if mode == TRACKING_MODE_RADIUS:
-                unique_id = (
-                    f"{self._data[CONF_LATITUDE]}"
-                    f"_{self._data[CONF_LONGITUDE]}"
-                    f"_{self._data[CONF_RADIUS_KM]}"
-                    f"_{all_sources_sorted}"
-                )
-            else:
-                unique_id = (
-                    f"{self._data[CONF_NORTH]}_{self._data[CONF_EAST]}"
-                    f"_{self._data[CONF_SOUTH]}_{self._data[CONF_WEST]}"
-                    f"_{all_sources_sorted}"
-                )
-
-            await self.async_set_unique_id(unique_id)
-            self._abort_if_unique_id_configured()
-
-            return self.async_create_entry(
-                title=self._make_title(),
-                data=self._data,
-            )
+                self._data[CONF_BARENTSWATCH_CLIENT_ID] = client_id
+                self._data[CONF_BARENTSWATCH_CLIENT_SECRET] = client_secret
+                await self.async_set_unique_id(self._unique_id())
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=self._make_title(), data=self._data)
 
         return self.async_show_form(
             step_id="timing",
             data_schema=_timing_schema(self._data),
+            errors=errors,
         )
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+    def _unique_id(self) -> str:
+        """Build a stable unique ID for the tracking area."""
+        mode = self._data.get(CONF_TRACKING_MODE, TRACKING_MODE_RADIUS)
+        if mode == TRACKING_MODE_RADIUS:
+            return (
+                f"{self._data[CONF_LATITUDE]}_{self._data[CONF_LONGITUDE]}"
+                f"_{self._data[CONF_RADIUS_KM]}_kystverket"
+            )
+        return (
+            f"{self._data[CONF_NORTH]}_{self._data[CONF_EAST]}"
+            f"_{self._data[CONF_SOUTH]}_{self._data[CONF_WEST]}_kystverket"
+        )
 
     def _make_title(self) -> str:
         """Generate a human-readable config entry title."""
         mode = self._data.get(CONF_TRACKING_MODE, TRACKING_MODE_RADIUS)
         if mode == TRACKING_MODE_RADIUS:
-            lat = self._data.get(CONF_LATITUDE, 0)
-            lon = self._data.get(CONF_LONGITUDE, 0)
-            r = self._data.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)
-            return f"MarineTraffic ({lat:.4f}, {lon:.4f}) r={r}km"
-        n = self._data.get(CONF_NORTH, 0)
-        e = self._data.get(CONF_EAST, 0)
-        s = self._data.get(CONF_SOUTH, 0)
-        w = self._data.get(CONF_WEST, 0)
-        return f"MarineTraffic [{s:.2f},{w:.2f}]–[{n:.2f},{e:.2f}]"
+            lat = self._data.get(CONF_LATITUDE, _NORWAY_LATITUDE)
+            lon = self._data.get(CONF_LONGITUDE, _NORWAY_LONGITUDE)
+            radius = self._data.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)
+            return f"Norwegian Maritime Tracker ({lat:.4f}, {lon:.4f}) r={radius}km"
+        north = self._data.get(CONF_NORTH, 0)
+        east = self._data.get(CONF_EAST, 0)
+        south = self._data.get(CONF_SOUTH, 0)
+        west = self._data.get(CONF_WEST, 0)
+        return f"Norwegian Maritime Tracker [{south:.2f},{west:.2f}]–[{north:.2f},{east:.2f}]"
 
     @staticmethod
     @callback
@@ -422,65 +289,34 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
         return MarineTrafficOptionsFlow(config_entry)
 
 
-# ---------------------------------------------------------------------------
-# Options flow
-# ---------------------------------------------------------------------------
-
-
 class MarineTrafficOptionsFlow(OptionsFlow):
-    """Allow users to adjust source and timing settings without removing the integration.
-
-    Geographic parameters (coordinates, radius, box boundaries) are not
-    editable via options because changing them effectively creates a different
-    tracking area.  Users should remove and re-add the integration for that.
-    """
+    """Allow users to update Kystverket credentials and polling settings."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         self._config_entry = config_entry
-        self._options: dict[str, Any] = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Handle the source selection step of the options flow."""
+        """Handle the single-step options flow."""
         errors: dict[str, str] = {}
-
         if user_input is not None:
-            data_source = user_input.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE)
-            fallback = user_input.get(CONF_FALLBACK_SOURCE, FALLBACK_SOURCE_NONE)
-            extra_sources: list[str] = list(user_input.get(CONF_EXTRA_SOURCES, []))
-            aishub_key = str(user_input.get(CONF_AISHUB_API_KEY, "")).strip()
+            client_id = str(user_input.get(CONF_BARENTSWATCH_CLIENT_ID, "")).strip()
+            client_secret = str(user_input.get(CONF_BARENTSWATCH_CLIENT_SECRET, "")).strip()
 
-            # AISHub requires an API key whether used as primary, extra, or fallback.
-            all_sources = [data_source] + extra_sources + (
-                [fallback] if fallback != FALLBACK_SOURCE_NONE else []
-            )
-            aishub_in_use = DATA_SOURCE_AISHUB in all_sources
-            if aishub_in_use and not aishub_key:
-                errors[CONF_AISHUB_API_KEY] = "aishub_api_key_required"
-
-            if fallback != FALLBACK_SOURCE_NONE and fallback == data_source:
-                errors[CONF_FALLBACK_SOURCE] = "fallback_same_as_primary"
+            if not client_id:
+                errors[CONF_BARENTSWATCH_CLIENT_ID] = "barentswatch_client_id_required"
+            if not client_secret:
+                errors[CONF_BARENTSWATCH_CLIENT_SECRET] = "barentswatch_client_secret_required"
 
             if not errors:
-                self._options.update(user_input)
-                self._options[CONF_AISHUB_API_KEY] = aishub_key
-                self._options[CONF_EXTRA_SOURCES] = extra_sources
-                return await self.async_step_timing()
+                user_input[CONF_BARENTSWATCH_CLIENT_ID] = client_id
+                user_input[CONF_BARENTSWATCH_CLIENT_SECRET] = client_secret
+                user_input[CONF_DATA_SOURCE] = DATA_SOURCE_KYSTVERKET
+                return self.async_create_entry(data=user_input)
 
         current = {**self._config_entry.data, **self._config_entry.options}
+        current.setdefault(CONF_DATA_SOURCE, DATA_SOURCE_KYSTVERKET)
         return self.async_show_form(
             step_id="init",
-            data_schema=_source_schema(current),
-            errors=errors,
-        )
-
-    async def async_step_timing(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Handle the timing settings step of the options flow."""
-        if user_input is not None:
-            self._options.update(user_input)
-            return self.async_create_entry(data=self._options)
-
-        current = {**self._config_entry.data, **self._config_entry.options, **self._options}
-        return self.async_show_form(
-            step_id="timing",
             data_schema=_timing_schema(current),
+            errors=errors,
         )

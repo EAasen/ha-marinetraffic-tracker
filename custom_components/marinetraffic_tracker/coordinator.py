@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for MarineTraffic Tracker.
+"""DataUpdateCoordinator for Norwegian Maritime Tracker.
 
 The coordinator owns the vessel state dictionary and is responsible for:
 - Periodic polling with randomised jitter to reduce rate-limit risk.
@@ -7,7 +7,7 @@ The coordinator owns the vessel state dictionary and is responsible for:
 - Maintaining historical statistics (visit counts, time-in-zone, speed/size
   records, and hourly/daily traffic patterns) that persist even after vessels
   are purged from the active registry.
-- Automatic fallback to a secondary data source when the primary source fails.
+- Polling the active Kystverket client and maintaining vessel history.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .aishub_client import AISHubClient
-from .client import MarineTrafficClient, VesselData
+from .client import VesselData
 from .const import (
     ANCHOR_SWING_THRESHOLD_KM,
     ANCHORED_STATUSES,
@@ -43,7 +43,7 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     CONF_WEST,
     DATA_SOURCE_AISHUB,
-    DEFAULT_DATA_SOURCE,
+    DATA_SOURCE_KYSTVERKET,
     DEFAULT_EXCLUDE_ANCHORED,
     DEFAULT_HISTORY_SIZE,
     DEFAULT_JITTER_MAX,
@@ -55,6 +55,7 @@ from .const import (
     MIN_UPDATE_INTERVAL_API,
     TRACKING_MODE_RADIUS,
 )
+from .kystverket_client import KystverketClient
 from .vesselfinder_client import VesselFinderClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ _LOGGER = logging.getLogger(__name__)
 # All clients expose the same async interface: get_vessels_in_radius and
 # get_vessels_in_box.  A Protocol would be cleaner, but a Union is simpler
 # and sufficient for static analysis without adding a new public module.
-VesselClient = MarineTrafficClient | AISHubClient | VesselFinderClient
+VesselClient = KystverketClient | AISHubClient | VesselFinderClient
 
 # ---------------------------------------------------------------------------
 # Internal geometry helper
@@ -254,10 +255,13 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             entry.data.get(CONF_DATA_SOURCE, DEFAULT_DATA_SOURCE),
         )
         all_clients: list[VesselClient] = [client, *self._extra_clients]
-        has_aishub = data_source == DATA_SOURCE_AISHUB or any(
-            isinstance(c, AISHubClient) for c in all_clients
+        has_official_api = data_source in {
+            DATA_SOURCE_AISHUB,
+            DATA_SOURCE_KYSTVERKET,
+        } or any(
+            isinstance(c, AISHubClient | KystverketClient) for c in all_clients
         )
-        min_interval = MIN_UPDATE_INTERVAL_API if has_aishub else MIN_UPDATE_INTERVAL
+        min_interval = MIN_UPDATE_INTERVAL_API if has_official_api else MIN_UPDATE_INTERVAL
 
         try:
             raw_interval = int(
