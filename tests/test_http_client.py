@@ -25,6 +25,7 @@ from custom_components.marinetraffic_tracker.client import (
     MarineTrafficClient,
     _haversine_km,
 )
+from custom_components.marinetraffic_tracker.kystverket_client import KystverketClient
 from custom_components.marinetraffic_tracker.vesselfinder_client import (
     VesselFinderClient,
 )
@@ -79,6 +80,24 @@ _BASE_VF_ROW: list = [
     "LAABC",     # callsign
     225,         # length
 ]
+
+_BASE_KV_ROW: dict = {
+    "mmsi": 123456789,
+    "name": "TEST VESSEL",
+    "shipType": 70,
+    "latitude": 59.9,
+    "longitude": 10.7,
+    "trueHeading": 90,
+    "courseOverGround": 91,
+    "speedOverGround": 12.5,
+    "navigationalStatus": 0,
+    "destination": "OSLO",
+    "imoNumber": 9123456,
+    "callsign": "LAABC",
+    "shipLength": 225,
+    "shipBreadth": 32,
+    "msgtime": "2026-05-22T20:00:00+00:00",
+}
 
 
 def _make_response_cm(
@@ -395,6 +414,96 @@ class TestAISHubRadius:
         mmsis = {v.mmsi for v in vessels}
         assert "123456789" in mmsis
         assert "999999999" not in mmsis
+
+
+# ---------------------------------------------------------------------------
+# Kystverket / BarentsWatch — HTTP layer
+# ---------------------------------------------------------------------------
+
+
+class TestKystverketHTTP:
+    """Tests for KystverketClient OAuth and HTTP behavior."""
+
+    @pytest.mark.asyncio
+    async def test_token_is_cached_until_expiry(self) -> None:
+        """The OAuth token should be reused until it expires."""
+        session = MagicMock()
+        session.post = MagicMock(
+            return_value=_make_response_cm(
+                200,
+                {"access_token": "cached-token", "expires_in": 3600},
+            )
+        )
+        client = KystverketClient(session, client_id="id", client_secret="secret")  # noqa: S106
+
+        token1 = await client._get_access_token()
+        token2 = await client._get_access_token()
+
+        assert token1 == "cached-token"
+        assert token2 == "cached-token"
+        session.post.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_401_response_refreshes_token_and_retries(self) -> None:
+        """A 401 from the AIS endpoint should force a token refresh and one retry."""
+        session = MagicMock()
+        session.post = MagicMock(
+            side_effect=[
+                _make_response_cm(
+                    200,
+                    {"access_token": "expired-token", "expires_in": 3600},
+                ),
+                _make_response_cm(
+                    200,
+                    {"access_token": "fresh-token", "expires_in": 3600},
+                ),
+            ]
+        )
+        session.get = MagicMock(
+            side_effect=[
+                _make_response_cm(401, {}),
+                _make_response_cm(200, [_BASE_KV_ROW]),
+            ]
+        )
+
+        client = KystverketClient(session, client_id="id", client_secret="secret")  # noqa: S106
+        vessels = await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
+
+        assert len(vessels) == 1
+        assert vessels[0].mmsi == "123456789"
+        assert session.post.call_count == 2
+        assert session.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_box_request_uses_bbox_params_and_filters_outside_vessels(self) -> None:
+        """The geodata request should use X/Y bbox params and keep only in-box vessels."""
+        outside_row = {
+            **_BASE_KV_ROW,
+            "mmsi": 999999999,
+            "latitude": 62.0,
+            "longitude": 10.7,
+        }
+        session = MagicMock()
+        session.post = MagicMock(
+            return_value=_make_response_cm(
+                200,
+                {"access_token": "token", "expires_in": 3600},
+            )
+        )
+        session.get = MagicMock(return_value=_make_response_cm(200, [_BASE_KV_ROW, outside_row]))
+
+        client = KystverketClient(session, client_id="id", client_secret="secret")  # noqa: S106
+        vessels = await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
+
+        assert [vessel.mmsi for vessel in vessels] == ["123456789"]
+        session.get.assert_called_once()
+        _, kwargs = session.get.call_args
+        assert kwargs["params"] == {
+            "Xmin": 10.0,
+            "Ymin": 59.0,
+            "Xmax": 11.0,
+            "Ymax": 60.0,
+        }
 
 
 # ---------------------------------------------------------------------------
