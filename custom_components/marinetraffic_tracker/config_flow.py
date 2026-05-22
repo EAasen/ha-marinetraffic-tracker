@@ -6,7 +6,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
@@ -82,7 +82,7 @@ def _is_within_norway(latitude: float | None, longitude: float | None) -> bool:
     )
 
 
-def _default_coordinates(hass: Any, defaults: dict[str, Any]) -> tuple[float, float]:
+def _default_coordinates(hass: HomeAssistant, defaults: dict[str, Any]) -> tuple[float, float]:
     """Return sensible Norwegian coordinates for the selector default."""
     lat = defaults.get(CONF_LATITUDE)
     lon = defaults.get(CONF_LONGITUDE)
@@ -97,7 +97,7 @@ def _default_coordinates(hass: Any, defaults: dict[str, Any]) -> tuple[float, fl
     return _NORWAY_LATITUDE, _NORWAY_LONGITUDE
 
 
-def _radius_schema(hass: Any, defaults: dict[str, Any]) -> vol.Schema:
+def _radius_schema(hass: HomeAssistant, defaults: dict[str, Any]) -> vol.Schema:
     lat, lon = _default_coordinates(hass, defaults)
     radius_m = defaults.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM) * _METRES_PER_KM
     return vol.Schema(
