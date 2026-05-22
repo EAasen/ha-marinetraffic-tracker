@@ -67,9 +67,11 @@ class KystverketClient:
         east: float,
         south: float,
         west: float,
-        zoom: int = 10,  # kept for interface compatibility; unused
+        zoom: int = 10,
     ) -> list[VesselData]:
         """Return vessels within the given geographic bounding box."""
+        # ``zoom`` is accepted for compatibility with the other client interfaces
+        # used by the coordinator, but the BarentsWatch API does not use it.
         del zoom
 
         token = await self._get_access_token()

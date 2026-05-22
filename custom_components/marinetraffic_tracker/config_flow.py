@@ -82,7 +82,7 @@ def _is_within_norway(latitude: float | None, longitude: float | None) -> bool:
     )
 
 
-def _source_defaults(hass: Any, defaults: dict[str, Any]) -> tuple[float, float]:
+def _default_coordinates(hass: Any, defaults: dict[str, Any]) -> tuple[float, float]:
     """Return sensible Norwegian coordinates for the selector default."""
     lat = defaults.get(CONF_LATITUDE)
     lon = defaults.get(CONF_LONGITUDE)
@@ -98,7 +98,7 @@ def _source_defaults(hass: Any, defaults: dict[str, Any]) -> tuple[float, float]
 
 
 def _radius_schema(hass: Any, defaults: dict[str, Any]) -> vol.Schema:
-    lat, lon = _source_defaults(hass, defaults)
+    lat, lon = _default_coordinates(hass, defaults)
     radius_m = defaults.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM) * _METRES_PER_KM
     return vol.Schema(
         {
@@ -232,7 +232,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_timing()
 
         defaults = dict(self._data)
-        lat, lon = _source_defaults(self.hass, defaults)
+        lat, lon = _default_coordinates(self.hass, defaults)
         defaults.setdefault(CONF_LATITUDE, lat)
         defaults.setdefault(CONF_LONGITUDE, lon)
         return self.async_show_form(
