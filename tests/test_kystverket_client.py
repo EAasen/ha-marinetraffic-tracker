@@ -83,6 +83,37 @@ def test_parse_response_accepts_list_payload() -> None:
     assert vessels[0].destination == "BERGEN"
 
 
+def test_parse_row_supports_open_positions_field_names() -> None:
+    """GeoJSON/openpositions property names should map into the vessel model."""
+    client = _make_client()
+    vessel = client._parse_row(
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [5.32, 60.39]},
+            "properties": {
+                "mmsi": 123456789,
+                "name": "TEST VESSEL",
+                "type": 70,
+                "heading": 181,
+                "cog": 182.4,
+                "sog": 12.5,
+                "navstat": 0,
+                "dest": "BERGEN",
+                "imo": 9876543,
+                "timestamp": "2026-05-22T20:00:00Z",
+            },
+        }
+    )
+
+    assert vessel is not None
+    assert vessel.heading == 181
+    assert vessel.course == 182
+    assert vessel.speed == 12.5
+    assert vessel.destination == "BERGEN"
+    assert vessel.imo == "9876543"
+    assert vessel.last_seen.isoformat() == "2026-05-22T20:00:00+00:00"
+
+
 def test_parse_ndjson_ignores_invalid_lines() -> None:
     """Line-delimited JSON fallback should skip malformed lines."""
     client = _make_client()

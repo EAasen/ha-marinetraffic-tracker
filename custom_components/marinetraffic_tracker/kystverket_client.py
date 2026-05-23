@@ -16,7 +16,7 @@ from .client import VesselData, _haversine_km, _nav_status_to_str
 _LOGGER = logging.getLogger(__name__)
 
 _TOKEN_URL = "https://id.barentswatch.no/connect/token"  # noqa: S105
-_VESSELS_URL = "https://live.ais.barentswatch.no/v1/combined"
+_VESSELS_URL = "https://www.barentswatch.no/bwapi/v1/geodata/ais/positions"
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=60)
 _TOKEN_REFRESH_BUFFER = 60
 _HEADING_NOT_AVAILABLE = 511
@@ -81,14 +81,17 @@ class KystverketClient:
             self._token_expiry = None
             token = await self._get_access_token()
             raw = await self._fetch_payload(token, north, east, south, west, retry=False)
-        return self._parse_response(raw)
+        return [
+            vessel
+            for vessel in self._parse_response(raw)
+            if south <= vessel.latitude <= north and west <= vessel.longitude <= east
+        ]
 
     async def _get_access_token(self) -> str:
-        now = datetime.now(UTC)
         if (
             self._access_token is not None
             and self._token_expiry is not None
-            and now < self._token_expiry
+            and datetime.now(UTC) < self._token_expiry
         ):
             return self._access_token
 
@@ -102,6 +105,7 @@ class KystverketClient:
         async with self._session.post(
             _TOKEN_URL,
             data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
             timeout=_REQUEST_TIMEOUT,
         ) as resp:
             resp.raise_for_status()
@@ -109,7 +113,7 @@ class KystverketClient:
 
         self._access_token = str(payload["access_token"])
         expires_in = int(payload.get("expires_in", 3600))
-        self._token_expiry = now + timedelta(
+        self._token_expiry = datetime.now(UTC) + timedelta(
             seconds=max(expires_in - _TOKEN_REFRESH_BUFFER, 0)
         )
         return self._access_token
@@ -129,8 +133,6 @@ class KystverketClient:
             "Ymin": round(south, 4),
             "Xmax": round(east, 4),
             "Ymax": round(north, 4),
-            "modelType": "Full",
-            "modelFormat": "Json",
         }
         headers = {
             "Authorization": f"Bearer {token}",
@@ -197,49 +199,57 @@ class KystverketClient:
                 props.setdefault("latitude", coords[1])
             row = props
 
-        mmsi = str(row.get("mmsi") or "").strip()
+        mmsi = str(_get_first(row, "mmsi") or "").strip()
         if not mmsi:
             return None
 
-        lat = row.get("latitude")
-        lon = row.get("longitude")
+        lat = _get_first(row, "latitude", "lat")
+        lon = _get_first(row, "longitude", "lon")
         if lat is None or lon is None:
             return None
 
-        name = str(row.get("name") or "").strip() or f"Vessel {mmsi}"
+        name = str(_get_first(row, "name", "shipName") or "").strip() or f"Vessel {mmsi}"
 
-        heading = _safe_int(row.get("trueHeading"))
+        heading = _safe_int(_get_first(row, "trueHeading", "heading"))
         if heading == _HEADING_NOT_AVAILABLE:
             heading = None
-        rate_of_turn = _safe_int(row.get("rateOfTurn"))
+        rate_of_turn = _safe_int(_get_first(row, "rateOfTurn", "rot"))
         if rate_of_turn == -128:
             rate_of_turn = None
 
-        last_seen = _parse_timestamp(row.get("msgtime"))
+        last_seen = _parse_timestamp(_get_first(row, "msgtime", "timestamp", "ts"))
 
         return VesselData(
             mmsi=mmsi,
             name=name,
-            vessel_type=_safe_int(row.get("shipType")) or 0,
+            vessel_type=_safe_int(_get_first(row, "shipType", "type")) or 0,
             latitude=float(lat),
             longitude=float(lon),
             heading=heading,
-            course=_safe_int(row.get("courseOverGround")),
-            speed=_safe_float(row.get("speedOverGround")),
-            status=_nav_status_to_str(row.get("navigationalStatus")),
+            course=_safe_int(_get_first(row, "courseOverGround", "cog", "course")),
+            speed=_safe_float(_get_first(row, "speedOverGround", "sog", "speed")),
+            status=_nav_status_to_str(_get_first(row, "navigationalStatus", "navstat")),
             origin=None,
-            destination=_safe_str(row.get("destination")),
+            destination=_safe_str(_get_first(row, "destination", "dest")),
             eta=None,
-            imo=_safe_str(row.get("imoNumber")),
+            imo=_safe_str(_get_first(row, "imoNumber", "imo")),
             flag=None,
-            callsign=_safe_str(row.get("callsign")),
-            length=_safe_int(row.get("shipLength")),
-            draught=_safe_float(row.get("draught")),
+            callsign=_safe_str(_get_first(row, "callsign", "callSign")),
+            length=_safe_int(_get_first(row, "shipLength", "length")),
+            draught=_safe_float(_get_first(row, "draught", "draft")),
             rate_of_turn=rate_of_turn,
-            beam=_safe_int(row.get("shipBreadth")),
+            beam=_safe_int(_get_first(row, "shipBreadth", "breadth", "beam")),
             last_seen=last_seen or datetime.now(UTC),
             source="kystverket",
         )
+
+
+def _get_first(row: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            return value
+    return None
 
 
 def _safe_int(value: Any) -> int | None:
