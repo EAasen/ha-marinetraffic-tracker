@@ -18,12 +18,21 @@ Earlier scraping-based sources such as MarineTraffic, VesselFinder, and AISHub a
 ## Features
 
 - Track vessels inside a **radius** or **bounding box**
-- Map core AIS telemetry into Home Assistant entities:
+- Map AIS telemetry, voyage data, and vessel metadata into Home Assistant entities:
   - `mmsi`
   - `vessel_name`
+  - `vessel_type`
   - `speed_knots`
+  - `course`
   - `heading`
   - `status`
+  - `destination`
+  - `eta`
+  - `imo`
+  - `callsign`
+  - `draught`
+  - `rate_of_turn`
+  - `msgtime`
 - Create one vessel count sensor plus per-vessel sensors and `device_tracker` entities
 - Optional vessel-type filtering
 - Optional exclusion of anchored and moored vessels from the live map

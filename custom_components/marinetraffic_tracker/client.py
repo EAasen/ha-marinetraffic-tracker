@@ -25,6 +25,8 @@ from typing import Any
 
 import aiohttp
 
+from .const import NAV_STATUS_MAP
+
 _LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -117,6 +119,7 @@ class VesselData:
     draught: float | None = None  # decimetres (AIS Message 5, manually entered)
     rate_of_turn: int | None = None  # degrees/minute; None when no info (raw –128)
     beam: int | None = None  # metres, derived from antenna offsets C + D
+    msgtime: str | None = None
     # Timestamp of last successful observation — updated by the coordinator.
     last_seen: datetime = field(default_factory=lambda: datetime.now(UTC))
     # Data source that provided this observation (e.g. "marinetraffic", "aishub").
@@ -453,28 +456,10 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 def _nav_status_to_str(code: Any) -> str | None:
     """Convert an AIS navigational status code to a human-readable string."""
-    _STATUS_MAP: dict[int, str] = {
-        0: "Under Way Using Engine",
-        1: "At Anchor",
-        2: "Not Under Command",
-        3: "Restricted Manoeuvrability",
-        4: "Constrained By Draught",
-        5: "Moored",
-        6: "Aground",
-        7: "Engaged In Fishing",
-        8: "Under Way Sailing",
-        9: "Reserved for High Speed Craft",
-        10: "Reserved for Wing in Ground",
-        11: "Reserved",
-        12: "Reserved",
-        13: "Reserved",
-        14: "AIS-SART / MOB-AIS / EPIRB-AIS",
-        15: "Undefined",
-    }
     if code is None:
         return None
     try:
-        return _STATUS_MAP.get(int(code))
+        return NAV_STATUS_MAP.get(int(code))
     except (ValueError, TypeError):
         return None
 

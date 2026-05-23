@@ -218,6 +218,21 @@ class KystverketClient:
             rate_of_turn = None
 
         last_seen = _parse_timestamp(_get_first(row, "msgtime", "timestamp", "ts"))
+        msgtime = last_seen.isoformat() if last_seen is not None else None
+        length = _extract_dimension_total(
+            row,
+            direct_keys=("shipLength", "length"),
+            nested_keys=("dimension", "dimensions"),
+            part_keys=("a", "toBow", "aDimension"),
+            other_part_keys=("b", "toStern", "bDimension"),
+        )
+        beam = _extract_dimension_total(
+            row,
+            direct_keys=("shipBreadth", "breadth", "beam", "width"),
+            nested_keys=("dimension", "dimensions"),
+            part_keys=("c", "toPort", "cDimension"),
+            other_part_keys=("d", "toStarboard", "dDimension"),
+        )
 
         return VesselData(
             mmsi=mmsi,
@@ -228,17 +243,26 @@ class KystverketClient:
             heading=heading,
             course=_safe_int(_get_first(row, "courseOverGround", "cog", "course")),
             speed=_safe_float(_get_first(row, "speedOverGround", "sog", "speed")),
-            status=_nav_status_to_str(_get_first(row, "navigationalStatus", "navstat")),
+            status=_nav_status_to_str(_get_first(row, "navigationalStatus", "navstat", "navStat")),
             origin=None,
             destination=_safe_str(_get_first(row, "destination", "dest")),
-            eta=None,
+            eta=_parse_eta(
+                _get_first(
+                    row,
+                    "eta",
+                    "etaUtc",
+                    "etaDateTime",
+                    "estimatedTimeOfArrival",
+                )
+            ),
             imo=_safe_str(_get_first(row, "imoNumber", "imo")),
             flag=None,
             callsign=_safe_str(_get_first(row, "callsign", "callSign")),
-            length=_safe_int(_get_first(row, "shipLength", "length")),
+            length=length,
             draught=_safe_float(_get_first(row, "draught", "draft")),
             rate_of_turn=rate_of_turn,
-            beam=_safe_int(_get_first(row, "shipBreadth", "breadth", "beam")),
+            beam=beam,
+            msgtime=msgtime,
             last_seen=last_seen or datetime.now(UTC),
             source="kystverket",
         )
@@ -288,3 +312,38 @@ def _parse_timestamp(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _parse_eta(value: Any) -> str | None:
+    """Parse ETA values into ISO 8601 strings when possible."""
+    parsed = _parse_timestamp(value)
+    if parsed is not None:
+        return parsed.isoformat()
+    return _safe_str(value)
+
+
+def _extract_dimension_total(
+    row: dict[str, Any],
+    *,
+    direct_keys: tuple[str, ...],
+    nested_keys: tuple[str, ...],
+    part_keys: tuple[str, ...],
+    other_part_keys: tuple[str, ...],
+) -> int | None:
+    """Extract a vessel dimension from direct fields or A/B/C/D-style offsets."""
+    direct_value = _safe_int(_get_first(row, *direct_keys))
+    if direct_value is not None:
+        return direct_value
+
+    nested = _get_first(row, *nested_keys)
+    if isinstance(nested, dict):
+        first = _safe_int(_get_first(nested, *part_keys))
+        second = _safe_int(_get_first(nested, *other_part_keys))
+        if first is not None and second is not None:
+            return first + second
+
+    first = _safe_int(_get_first(row, *part_keys))
+    second = _safe_int(_get_first(row, *other_part_keys))
+    if first is not None and second is not None:
+        return first + second
+    return None

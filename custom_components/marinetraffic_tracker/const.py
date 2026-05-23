@@ -53,6 +53,7 @@ ATTR_CALLSIGN = "callsign"
 ATTR_LENGTH = "length"
 ATTR_FLAG = "flag"
 ATTR_LAST_SEEN = "last_seen"
+ATTR_MSGTIME = "msgtime"
 ATTR_DRAUGHT = "draught"
 ATTR_RATE_OF_TURN = "rate_of_turn"
 ATTR_BEAM = "beam"
@@ -262,4 +263,26 @@ VESSEL_TYPE_MAP: dict[int, str] = {
     93: "Other (hazardous C)",
     94: "Other (hazardous D)",
     99: "Other (no additional information)",
+}
+
+# ---------------------------------------------------------------------------
+# AIS navigational status code → human-readable name
+# ---------------------------------------------------------------------------
+NAV_STATUS_MAP: dict[int, str] = {
+    0: "Under Way Using Engine",
+    1: "At Anchor",
+    2: "Not Under Command",
+    3: "Restricted Manoeuvrability",
+    4: "Constrained By Draught",
+    5: "Moored",
+    6: "Aground",
+    7: "Engaged In Fishing",
+    8: "Under Way Sailing",
+    9: "Reserved for High Speed Craft",
+    10: "Reserved for Wing in Ground",
+    11: "Reserved",
+    12: "Reserved",
+    13: "Reserved",
+    14: "AIS-SART / MOB-AIS / EPIRB-AIS",
+    15: "Undefined",
 }
