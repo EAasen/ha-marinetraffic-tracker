@@ -26,6 +26,7 @@ from custom_components.marinetraffic_tracker.const import (
     ATTR_LAST_SEEN,
     ATTR_LENGTH,
     ATTR_MMSI,
+    ATTR_MSGTIME,
     ATTR_ORIGIN,
     ATTR_POSITION_HISTORY,
     ATTR_RATE_OF_TURN,
@@ -66,6 +67,7 @@ def _make_full_vessel(mmsi: str = "123456789") -> VesselData:
         draught=62.0,
         rate_of_turn=5,
         beam=32,
+        msgtime="2026-05-01T11:59:30+00:00",
         last_seen=datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC),
     )
 
@@ -187,6 +189,10 @@ class TestSensorAttributeKeys:
         attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
         assert ATTR_DRAUGHT in attrs
 
+    def test_msgtime_key_is_canonical(self) -> None:
+        attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
+        assert ATTR_MSGTIME in attrs
+
     def test_rate_of_turn_key_is_canonical(self) -> None:
         attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
         assert ATTR_RATE_OF_TURN in attrs
@@ -264,6 +270,10 @@ class TestSensorAttributeValues:
         attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
         assert attrs[ATTR_RATE_OF_TURN] == 5
 
+    def test_msgtime_value(self) -> None:
+        attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
+        assert attrs[ATTR_MSGTIME] == "2026-05-01T11:59:30+00:00"
+
     def test_beam_value(self) -> None:
         attrs = _make_sensor(_make_full_vessel()).extra_state_attributes
         assert attrs[ATTR_BEAM] == 32
@@ -274,6 +284,7 @@ class TestSensorAttributeValues:
         assert attrs[ATTR_CALLSIGN] is None
         assert attrs[ATTR_LENGTH] is None
         assert attrs[ATTR_DRAUGHT] is None
+        assert attrs[ATTR_MSGTIME] is None
         assert attrs[ATTR_RATE_OF_TURN] is None
         assert attrs[ATTR_BEAM] is None
 
