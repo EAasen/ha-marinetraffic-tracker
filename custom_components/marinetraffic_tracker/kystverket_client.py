@@ -16,7 +16,7 @@ from .client import VesselData, _haversine_km, _nav_status_to_str
 _LOGGER = logging.getLogger(__name__)
 
 _TOKEN_URL = "https://id.barentswatch.no/connect/token"  # noqa: S105
-_VESSELS_URL = "https://www.barentswatch.no/bwapi/v1/geodata/ais/positions"
+_VESSELS_URL = "https://live.ais.barentswatch.no/v1/combined"
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=60)
 _TOKEN_REFRESH_BUFFER = 60
 _HEADING_NOT_AVAILABLE = 511
@@ -128,11 +128,10 @@ class KystverketClient:
         *,
         retry: bool = True,
     ) -> Any | None:
+        del north, east, south, west
         params = {
-            "Xmin": round(west, 4),
-            "Ymin": round(south, 4),
-            "Xmax": round(east, 4),
-            "Ymax": round(north, 4),
+            "modelType": "Full",
+            "modelFormat": "Geojson",
         }
         headers = {
             "Authorization": f"Bearer {token}",

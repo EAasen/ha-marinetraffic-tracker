@@ -475,13 +475,16 @@ class TestKystverketHTTP:
         assert session.get.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_box_request_uses_bbox_params_and_filters_outside_vessels(self) -> None:
-        """The geodata request should use X/Y bbox params and keep only in-box vessels."""
+    async def test_box_request_uses_live_api_params_and_filters_outside_vessels(self) -> None:
+        """The live AIS request should use the documented params and keep only in-box vessels."""
         outside_row = {
-            **_BASE_KV_ROW,
-            "mmsi": 999999999,
-            "latitude": 62.0,
-            "longitude": 10.7,
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [10.7, 62.0]},
+            "properties": {
+                "mmsi": 999999999,
+                "name": "OUTSIDE VESSEL",
+                "shipType": 70,
+            },
         }
         session = MagicMock()
         session.post = MagicMock(
@@ -490,7 +493,22 @@ class TestKystverketHTTP:
                 {"access_token": "token", "expires_in": 3600},
             )
         )
-        session.get = MagicMock(return_value=_make_response_cm(200, [_BASE_KV_ROW, outside_row]))
+        session.get = MagicMock(
+            return_value=_make_response_cm(
+                200,
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "geometry": {"type": "Point", "coordinates": [10.7, 59.9]},
+                            "properties": dict(_BASE_KV_ROW),
+                        },
+                        outside_row,
+                    ],
+                },
+            )
+        )
 
         client = KystverketClient(session, client_id="id", client_secret="secret")  # noqa: S106
         vessels = await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
@@ -499,10 +517,8 @@ class TestKystverketHTTP:
         session.get.assert_called_once()
         _, kwargs = session.get.call_args
         assert kwargs["params"] == {
-            "Xmin": 10.0,
-            "Ymin": 59.0,
-            "Xmax": 11.0,
-            "Ymax": 60.0,
+            "modelType": "Full",
+            "modelFormat": "Geojson",
         }
 
 

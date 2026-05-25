@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.marinetraffic_tracker.const import (
     CONF_FILTER_VESSEL_TYPES,
@@ -203,6 +204,19 @@ async def test_vessel_with_none_destination_does_not_raise() -> None:
 
     assert result["987654321"].destination is None
     assert result["987654321"].eta is None
+
+
+@pytest.mark.asyncio
+async def test_single_source_failure_uses_barentswatch_message() -> None:
+    """A single Kystverket failure should not mention legacy multi-source wording."""
+    hass = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("401 Unauthorized"))
+
+    coordinator = _make_coordinator(hass, client)
+
+    with pytest.raises(UpdateFailed, match="Kystverket / BarentsWatch request failed"):
+        await coordinator._async_update_data()
 
 
 # ---------------------------------------------------------------------------
