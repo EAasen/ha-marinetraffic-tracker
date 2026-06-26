@@ -108,6 +108,16 @@ class KystverketClient:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             timeout=_REQUEST_TIMEOUT,
         ) as resp:
+            if resp.status == 400:
+                _LOGGER.error(
+                    "BarentsWatch token request failed (HTTP 400). "
+                    "Check that your Client ID and Client Secret are correct."
+                )
+            elif resp.status == 401:
+                _LOGGER.error(
+                    "BarentsWatch authentication failed (HTTP 401). "
+                    "The Client ID or Client Secret is invalid."
+                )
             resp.raise_for_status()
             payload = await resp.json(content_type=None)
 
