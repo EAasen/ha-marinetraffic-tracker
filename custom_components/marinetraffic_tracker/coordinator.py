@@ -359,28 +359,34 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
 
     async def _fetch_vessels(
         self, client: VesselClient, tracking_mode: str, config: dict
-    ) -> list[VesselData] | None:
-        """Attempt to fetch vessels from *client*; return ``None`` on failure.
+    ) -> tuple[list[VesselData] | None, str | None]:
+        """Attempt to fetch vessels from *client*; return result and error text.
 
         This helper isolates the try/except so that ``_async_update_data`` can
         cleanly fall through to the fallback client when the primary fails.
         """
         try:
             if tracking_mode == TRACKING_MODE_RADIUS:
-                return await client.get_vessels_in_radius(
-                    latitude=float(config[CONF_LATITUDE]),
-                    longitude=float(config[CONF_LONGITUDE]),
-                    radius_km=float(config.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)),
+                return (
+                    await client.get_vessels_in_radius(
+                        latitude=float(config[CONF_LATITUDE]),
+                        longitude=float(config[CONF_LONGITUDE]),
+                        radius_km=float(config.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)),
+                    ),
+                    None,
                 )
-            return await client.get_vessels_in_box(
-                north=float(config[CONF_NORTH]),
-                east=float(config[CONF_EAST]),
-                south=float(config[CONF_SOUTH]),
-                west=float(config[CONF_WEST]),
+            return (
+                await client.get_vessels_in_box(
+                    north=float(config[CONF_NORTH]),
+                    east=float(config[CONF_EAST]),
+                    south=float(config[CONF_SOUTH]),
+                    west=float(config[CONF_WEST]),
+                ),
+                None,
             )
         except Exception as exc:  # noqa: BLE001
             _LOGGER.error("Data source fetch failed: %s", exc)
-            return None
+            return None, str(exc)
 
     async def _async_update_data(self) -> dict[str, VesselData]:
         """Fetch fresh vessel data, merge into registry, purge stale entries.
@@ -430,24 +436,40 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         # Primary client is always first; extra clients follow.
         all_clients: list[VesselClient] = [self._client, *self._extra_clients]
 
-        results: list[list[VesselData] | None] = list(
+        raw_results: list[tuple[list[VesselData] | None, str | None]] = list(
             await asyncio.gather(
                 *[self._fetch_vessels(c, tracking_mode, config) for c in all_clients],
                 return_exceptions=False,
             )
         )
+        results = [result for result, _ in raw_results]
+        errors = [error for _, error in raw_results]
 
         # Log which sources succeeded / failed.
         for idx, result in enumerate(results):
             label = "primary" if idx == 0 else f"extra[{idx - 1}]"
             if result is None:
-                _LOGGER.warning("Data source %s failed to return vessel data", label)
+                _LOGGER.warning(
+                    "Data source %s failed to return vessel data%s",
+                    label,
+                    f": {errors[idx]}" if errors[idx] else "",
+                )
             else:
                 _LOGGER.debug("Data source %s returned %d vessel(s)", label, len(result))
 
         # Fail only when every source returned None.
         if all(r is None for r in results):
-            raise UpdateFailed("All configured data sources failed to return vessel data")
+            error_details = next((error for error in errors if error), None)
+            if len(all_clients) == 1:
+                message = "Kystverket / BarentsWatch request failed to return vessel data"
+                if error_details:
+                    message = f"{message}: {error_details}"
+                raise UpdateFailed(message)
+
+            message = "All configured data sources failed to return vessel data"
+            if error_details:
+                message = f"{message}: {error_details}"
+            raise UpdateFailed(message)
 
         # Merge results: MMSI deduplication — most-recent last_seen wins.
         # For vessels without an explicit timestamp (scrapers do not set one),

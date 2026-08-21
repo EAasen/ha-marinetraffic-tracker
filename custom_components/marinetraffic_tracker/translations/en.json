@@ -74,14 +74,6 @@
           "stale_timeout": "Stale Vessel Timeout (seconds)",
           "filter_vessel_types": "Allowed Vessel Types",
           "exclude_anchored": "Exclude Anchored & Moored Vessels from Live Map"
-        },
-        "data_description": {
-          "barentswatch_client_id": "Create a free BarentsWatch application to get a client ID for the official Norwegian AIS API.",
-          "barentswatch_client_secret": "The client secret paired with your BarentsWatch application.",
-          "update_interval": "How often to poll Kystverket live AIS data. Minimum 5 seconds.",
-          "stale_timeout": "A vessel not seen for this long will be removed.",
-          "filter_vessel_types": "Only show vessels of the selected types. Leave empty to show all vessel types.",
-          "exclude_anchored": "When enabled, vessels with 'At Anchor' or 'Moored' status are removed from the live map and device tracker entities but still appear in the summary attributes."
         }
       }
     },
