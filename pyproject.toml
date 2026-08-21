@@ -16,3 +16,49 @@ ignore = [
   "S101",  # assert statements (used in tests)
   "S311",  # Standard pseudo-random generators (used for jitter; flagged but intentional)
 ]
+
+# ---------------------------------------------------------------------------
+# Black — code formatter
+# ---------------------------------------------------------------------------
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.git
+  | \.mypy_cache
+  | \.ruff_cache
+  | __pycache__
+)/
+'''
+
+# ---------------------------------------------------------------------------
+# isort — import sorting
+# ---------------------------------------------------------------------------
+[tool.isort]
+profile = "black"
+line_length = 100
+known_third_party = ["homeassistant", "aiohttp", "voluptuous"]
+known_first_party = ["custom_components"]
+force_sort_within_sections = true
+
+# ---------------------------------------------------------------------------
+# mypy — static type checking
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false

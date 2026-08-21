@@ -25,6 +25,36 @@ jobs:
           [ -d tests ] && TARGETS="$TARGETS tests/"
           ruff check $TARGETS
 
+  mypy:
+    name: Mypy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install mypy aiohttp voluptuous
+      - name: Run Mypy
+        run: mypy custom_components/ --ignore-missing-imports
+
+  pylint:
+    name: Pylint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install pylint aiohttp voluptuous
+      - name: Run Pylint
+        run: pylint custom_components/ --fail-under=8.0
+
   hassfest:
     name: HASSfest
     runs-on: ubuntu-latest
