@@ -128,8 +128,8 @@ New entities are created dynamically when the coordinator delivers an update con
 
 | Constant | Purpose |
 |---|---|
-| `MIN_UPDATE_INTERVAL` | Hard floor (30 s) for scraper-based sources |
-| `MIN_UPDATE_INTERVAL_API` | Hard floor (5 s) for API-based sources |
+| `MIN_UPDATE_INTERVAL` | Hard floor (30 s) for scraper-based sources (MarineTraffic, VesselFinder) |
+| `MIN_UPDATE_INTERVAL_API` | Hard floor (5 s) for official API sources (Kystverket / BarentsWatch, AISHub) |
 | `DEFAULT_HISTORY_SIZE` | Maximum GPS track points per vessel (20) |
 | `ANCHOR_SWING_THRESHOLD_KM` | Minimum movement to record a new history point for anchored vessels (0.1 km) |
 | `ANCHORED_STATUSES` | AIS status strings treated as stationary (`{"At Anchor", "Moored"}`) |
