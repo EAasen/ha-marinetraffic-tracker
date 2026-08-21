@@ -546,6 +546,7 @@ class TestKystverketHTTP:
             "modelType": "Full",
             "modelFormat": "Geojson",
         }
+        assert kwargs["headers"]["Authorization"] == "Bearer token"
 
 
 # ---------------------------------------------------------------------------
