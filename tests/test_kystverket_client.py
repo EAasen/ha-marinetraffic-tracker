@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
+import pytest
+
 from custom_components.marinetraffic_tracker.kystverket_client import KystverketClient
 
 
@@ -190,3 +194,14 @@ def test_parse_ndjson_ignores_invalid_lines() -> None:
     rows = client._parse_ndjson('{"mmsi": 1, "latitude": 60, "longitude": 5}\nnot-json\n')
 
     assert rows == [{"mmsi": 1, "latitude": 60, "longitude": 5}]
+
+
+@pytest.mark.asyncio
+async def test_async_validate_credentials_requests_access_token() -> None:
+    """Credential validation should reuse the token acquisition path."""
+    client = _make_client()
+    client._get_access_token = AsyncMock(return_value="token")
+
+    await client.async_validate_credentials()
+
+    client._get_access_token.assert_awaited_once()

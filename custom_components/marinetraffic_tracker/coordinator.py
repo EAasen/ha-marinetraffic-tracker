@@ -37,6 +37,7 @@ from .const import (
     CONF_DATA_SOURCE,
     CONF_EAST,
     CONF_EXCLUDE_ANCHORED,
+    CONF_EXCLUDE_MOORED,
     CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
@@ -51,6 +52,7 @@ from .const import (
     DATA_SOURCE_KYSTVERKET,
     DEFAULT_DATA_SOURCE,
     DEFAULT_EXCLUDE_ANCHORED,
+    DEFAULT_EXCLUDE_MOORED,
     DEFAULT_HISTORY_SIZE,
     DEFAULT_JITTER_MAX,
     DEFAULT_RADIUS_KM,
@@ -253,8 +255,8 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         self._entry = entry
         # Running vessel registry — persists across updates.
         self._vessels: dict[str, VesselData] = {}
-        # Anchored/moored vessel registry — used when the exclude_anchored option
-        # is enabled so these vessels are tracked but not exposed in coordinator.data.
+        # Anchored/moored vessel registry — used when exclusion options are
+        # enabled so these vessels are tracked but not exposed in coordinator.data.
         self._anchored_vessels: dict[str, VesselData] = {}
         # Per-vessel position history — stores recent (lat, lon, timestamp) tuples.
         self._position_history: dict[str, list[dict]] = {}
@@ -342,11 +344,10 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
     def anchored_vessels(self) -> dict[str, VesselData]:
         """Return vessels currently excluded from the live map due to anchor status.
 
-        This dict is only populated when the ``exclude_anchored`` option is
-        enabled.  It provides the separate summary information requested by the
-        Anchor Toggle feature — callers such as the count sensor can expose
-        this data without the anchored vessels appearing in the main tracking
-        map or device_tracker entities.
+        This dict is only populated when the ``exclude_anchored`` or
+        ``exclude_moored`` options are enabled. Callers such as the count
+        sensor can expose this data without stationary vessels appearing in the
+        main tracking map or device_tracker entities.
         """
         return dict(self._anchored_vessels)
 
@@ -439,13 +440,14 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
 
         Anchored / moored vessel handling
         ----------------------------------
-        When ``exclude_anchored`` is enabled in options, vessels whose AIS
-        navigational status is "At Anchor" or "Moored" are tracked in a
-        separate ``_anchored_vessels`` dict instead of the main ``_vessels``
-        dict.  They do not appear in ``coordinator.data`` (so device_tracker
-        and per-vessel sensor entities are not created for them) but they are
-        still counted in statistics and exposed via the ``anchored_vessels``
-        property for use in the count sensor summary.
+        When ``exclude_anchored`` and/or ``exclude_moored`` is enabled in
+        options, vessels whose AIS navigational status is "At Anchor" and/or
+        "Moored" are tracked in a separate ``_anchored_vessels`` dict instead
+        of the main ``_vessels`` dict. They do not appear in
+        ``coordinator.data`` (so device_tracker and per-vessel sensor entities
+        are not created for them) but they are still counted in statistics and
+        exposed via the ``anchored_vessels`` property for use in the count
+        sensor summary.
 
         Regardless of the toggle, position history entries for anchored or
         moored vessels are only recorded when the vessel has moved beyond the
@@ -574,6 +576,7 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         exclude_anchored: bool = bool(
             config.get(CONF_EXCLUDE_ANCHORED, DEFAULT_EXCLUDE_ANCHORED)
         )
+        exclude_moored: bool = bool(config.get(CONF_EXCLUDE_MOORED, DEFAULT_EXCLUDE_MOORED))
 
         now = datetime.now(UTC)
 
@@ -583,9 +586,13 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         # Merge fresh observations into the appropriate registry.
         for vessel in fresh:
             updated = replace(vessel, last_seen=now)
-            is_anchored = vessel.status in ANCHORED_STATUSES
+            is_anchored = vessel.status == "At Anchor"
+            is_moored = vessel.status == "Moored"
+            exclude_from_active = (exclude_anchored and is_anchored) or (
+                exclude_moored and is_moored
+            )
 
-            if exclude_anchored and is_anchored:
+            if exclude_from_active:
                 # Move to (or keep in) the anchored-only registry.
                 self._anchored_vessels[updated.mmsi] = updated
                 # Remove from main registry if the vessel was previously active.
