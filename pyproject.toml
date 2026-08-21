@@ -16,3 +16,44 @@ ignore = [
   "S101",  # assert statements (used in tests)
   "S311",  # Standard pseudo-random generators (used for jitter; flagged but intentional)
 ]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+py_version = 310
+src_paths = ["custom_components", "tests"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["custom_components"]
+namespace_packages = true
+explicit_package_bases = true
+ignore_missing_imports = true
+follow_imports = "silent"
+warn_unused_ignores = true
+disable_error_code = ["arg-type", "attr-defined", "override", "return-value"]
+
+[tool.pylint.main]
+py-version = "3.12"
+jobs = 0
+ignore-paths = ["^tests/.*$"]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.messages_control]
+disable = [
+  "abstract-method",
+  "broad-exception-caught",
+  "duplicate-code",
+  "too-many-arguments",
+  "too-many-branches",
+  "too-many-instance-attributes",
+  "too-many-locals",
+  "too-many-statements",
+  "unused-argument",
+]

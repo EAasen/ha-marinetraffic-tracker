@@ -71,6 +71,7 @@ VesselClient = KystverketClient | AISHubClient | VesselFinderClient
 # Internal geometry helper
 # ---------------------------------------------------------------------------
 
+
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Return the great-circle distance in kilometres between two lat/lon points.
 
@@ -98,6 +99,7 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 # ---------------------------------------------------------------------------
 # Statistics data model
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class VesselRecord:
@@ -259,9 +261,7 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         has_official_api = data_source in {
             DATA_SOURCE_AISHUB,
             DATA_SOURCE_KYSTVERKET,
-        } or any(
-            isinstance(c, AISHubClient | KystverketClient) for c in all_clients
-        )
+        } or any(isinstance(c, AISHubClient | KystverketClient) for c in all_clients)
         min_interval = MIN_UPDATE_INTERVAL_API if has_official_api else MIN_UPDATE_INTERVAL
 
         try:
@@ -503,9 +503,7 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 allowed_types,
             )
 
-        exclude_anchored: bool = bool(
-            config.get(CONF_EXCLUDE_ANCHORED, DEFAULT_EXCLUDE_ANCHORED)
-        )
+        exclude_anchored: bool = bool(config.get(CONF_EXCLUDE_ANCHORED, DEFAULT_EXCLUDE_ANCHORED))
 
         now = datetime.now(UTC)
 
@@ -539,8 +537,10 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             if is_anchored and history:
                 last = history[-1]
                 dist_km = _haversine_km(
-                    last["latitude"], last["longitude"],
-                    vessel.latitude, vessel.longitude,
+                    last["latitude"],
+                    last["longitude"],
+                    vessel.latitude,
+                    vessel.longitude,
                 )
                 if dist_km < ANCHOR_SWING_THRESHOLD_KM:
                     _LOGGER.debug(

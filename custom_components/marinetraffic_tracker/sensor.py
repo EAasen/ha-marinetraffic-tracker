@@ -81,10 +81,12 @@ async def async_setup_entry(
     known_mmsis: set[str] = set()
 
     # Always add the global count sensor and statistics sensor immediately.
-    async_add_entities([
-        MarineTrafficCountSensor(coordinator, entry.entry_id),
-        MarineTrafficStatisticsSensor(coordinator, entry.entry_id),
-    ])
+    async_add_entities(
+        [
+            MarineTrafficCountSensor(coordinator, entry.entry_id),
+            MarineTrafficStatisticsSensor(coordinator, entry.entry_id),
+        ]
+    )
 
     @callback
     def _handle_coordinator_update() -> None:
@@ -166,12 +168,10 @@ class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
             }
 
         vessels_list = [
-            _vessel_summary(v)
-            for v in sorted(vessels_data.values(), key=lambda x: x.name)
+            _vessel_summary(v) for v in sorted(vessels_data.values(), key=lambda x: x.name)
         ]
         anchored_list = [
-            _vessel_summary(v)
-            for v in sorted(anchored_data.values(), key=lambda x: x.name)
+            _vessel_summary(v) for v in sorted(anchored_data.values(), key=lambda x: x.name)
         ]
         return {
             "vessel_mmsis": sorted(vessels_data.keys()),

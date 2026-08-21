@@ -175,8 +175,7 @@ async def test_timing_step_requires_barentswatch_credentials() -> None:
     assert result["type"] == "form"
     assert result["errors"][CONF_BARENTSWATCH_CLIENT_ID] == "barentswatch_client_id_required"
     assert (
-        result["errors"][CONF_BARENTSWATCH_CLIENT_SECRET]
-        == "barentswatch_client_secret_required"
+        result["errors"][CONF_BARENTSWATCH_CLIENT_SECRET] == "barentswatch_client_secret_required"
     )
 
 

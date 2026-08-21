@@ -17,19 +17,19 @@ def _make_client() -> VesselFinderClient:
 # A minimal valid VesselFinder compact vessel row:
 # [mmsi, name, lat, lon, speed, course, heading, status, type, flag, imo, callsign, length]
 _BASE_ROW: list = [
-    123456789,    # 0: MMSI
+    123456789,  # 0: MMSI
     "TEST VESSEL",  # 1: Name
-    59.9,          # 2: Latitude
-    10.7,          # 3: Longitude
-    12.5,          # 4: Speed (knots)
-    182.0,         # 5: Course (degrees)
-    180,           # 6: Heading (degrees)
-    0,             # 7: Nav status (0 = Under Way Using Engine)
-    70,            # 8: Type (Cargo)
-    "NO",          # 9: Flag (Norway)
-    9123456,       # 10: IMO
-    "LAABC",       # 11: Callsign
-    225,           # 12: Length (metres)
+    59.9,  # 2: Latitude
+    10.7,  # 3: Longitude
+    12.5,  # 4: Speed (knots)
+    182.0,  # 5: Course (degrees)
+    180,  # 6: Heading (degrees)
+    0,  # 7: Nav status (0 = Under Way Using Engine)
+    70,  # 8: Type (Cargo)
+    "NO",  # 9: Flag (Norway)
+    9123456,  # 10: IMO
+    "LAABC",  # 11: Callsign
+    225,  # 12: Length (metres)
 ]
 
 
@@ -248,7 +248,21 @@ class TestVesselFinderParseResponse:
 
     def test_multiple_vessels_parsed(self) -> None:
         client = _make_client()
-        row2 = [987654321, "VESSEL TWO", 30.0, 32.5, 8.0, 90, 91, 0, 80, "DE", 0, "", 180]
+        row2 = [
+            987654321,
+            "VESSEL TWO",
+            30.0,
+            32.5,
+            8.0,
+            90,
+            91,
+            0,
+            80,
+            "DE",
+            0,
+            "",
+            180,
+        ]
         vessels = client._parse_response([_BASE_ROW, row2])
         assert len(vessels) == 2
 

@@ -51,9 +51,9 @@ def test_hard_floor_clamps_low_interval() -> None:
     """Any interval below 30s must be clamped to MIN_UPDATE_INTERVAL at runtime."""
     for raw in (1, 5, 10, 15, 29):
         enforced = max(raw, MIN_UPDATE_INTERVAL)
-        assert enforced == MIN_UPDATE_INTERVAL, (
-            f"Interval {raw}s was not clamped to {MIN_UPDATE_INTERVAL}s"
-        )
+        assert (
+            enforced == MIN_UPDATE_INTERVAL
+        ), f"Interval {raw}s was not clamped to {MIN_UPDATE_INTERVAL}s"
 
 
 def test_hard_floor_does_not_clamp_valid_intervals() -> None:
@@ -82,9 +82,9 @@ def test_schema_min_equals_constant() -> None:
 
 def test_default_update_interval_is_above_floor() -> None:
     """The built-in DEFAULT_UPDATE_INTERVAL must always be >= MIN_UPDATE_INTERVAL."""
-    assert DEFAULT_UPDATE_INTERVAL >= MIN_UPDATE_INTERVAL, (
-        "DEFAULT_UPDATE_INTERVAL must never be below MIN_UPDATE_INTERVAL"
-    )
+    assert (
+        DEFAULT_UPDATE_INTERVAL >= MIN_UPDATE_INTERVAL
+    ), "DEFAULT_UPDATE_INTERVAL must never be below MIN_UPDATE_INTERVAL"
 
 
 def test_coordinator_clamping_logic_below_floor() -> None:

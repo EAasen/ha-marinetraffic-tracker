@@ -219,9 +219,7 @@ class AISHubClient:
 
         rows = raw[1]
         if not isinstance(rows, list):
-            _LOGGER.debug(
-                "AISHub vessel list is not a list: %s", type(rows).__name__
-            )
+            _LOGGER.debug("AISHub vessel list is not a list: %s", type(rows).__name__)
             return vessels
 
         _LOGGER.debug("Parsing %d AISHub vessel row(s)", len(rows))

@@ -85,9 +85,9 @@ def test_hard_floor_clamped() -> None:
     """An interval below MIN_UPDATE_INTERVAL must be silently clamped to the floor."""
     raw = 5
     enforced = max(raw, MIN_UPDATE_INTERVAL)
-    assert enforced == MIN_UPDATE_INTERVAL, (
-        f"Hard floor must clamp any interval below {MIN_UPDATE_INTERVAL}s"
-    )
+    assert (
+        enforced == MIN_UPDATE_INTERVAL
+    ), f"Hard floor must clamp any interval below {MIN_UPDATE_INTERVAL}s"
 
 
 def test_hard_floor_value_is_30() -> None:
@@ -312,9 +312,9 @@ async def test_repeated_refreshes_do_not_refire_entered() -> None:
         await coordinator._async_update_data()
 
     entered_after = len([e for e in fired_events if e["event_type"] == ev_type])
-    assert entered_after == entered_before, (
-        "No entered event should fire for an already-tracked vessel"
-    )
+    assert (
+        entered_after == entered_before
+    ), "No entered event should fire for an already-tracked vessel"
 
 
 # ---------------------------------------------------------------------------

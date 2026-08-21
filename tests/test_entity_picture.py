@@ -7,9 +7,7 @@ from unittest.mock import MagicMock
 
 from custom_components.marinetraffic_tracker.client import VesselData
 from custom_components.marinetraffic_tracker.const import vessel_photo_url
-from custom_components.marinetraffic_tracker.device_tracker import (
-    MarineTrafficVesselTracker,
-)
+from custom_components.marinetraffic_tracker.device_tracker import MarineTrafficVesselTracker
 from custom_components.marinetraffic_tracker.sensor import MarineTrafficVesselSensor
 
 # ---------------------------------------------------------------------------
