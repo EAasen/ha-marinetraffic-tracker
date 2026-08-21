@@ -54,7 +54,7 @@ from .const import (
     vessel_photo_url,
 )
 from .coordinator import MarineTrafficCoordinator
-from .entity import MarineTrafficEntity
+from .entity import MarineTrafficVesselEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ async def async_setup_entry(
     _handle_coordinator_update()
 
 
-class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
+class MarineTrafficVesselTracker(MarineTrafficVesselEntity, TrackerEntity):
     """A device tracker entity representing a single AIS-tracked vessel.
 
     The entity becomes *unavailable* once the coordinator has purged it from
@@ -128,8 +128,7 @@ class MarineTrafficVesselTracker(MarineTrafficEntity, TrackerEntity):
         mmsi: str,
     ) -> None:
         """Initialise the tracker entity for the given MMSI."""
-        super().__init__(coordinator, entry_id)
-        self._mmsi = mmsi
+        super().__init__(coordinator, entry_id, mmsi)
         self._attr_unique_id = f"{entry_id}_tracker_{mmsi}"
 
     # ------------------------------------------------------------------
