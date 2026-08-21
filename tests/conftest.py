@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -74,3 +74,17 @@ def mock_client() -> MagicMock:
     client.get_vessels_in_radius = AsyncMock(return_value=[])
     client.get_vessels_in_box = AsyncMock(return_value=[])
     return client
+
+
+@pytest.fixture(autouse=True)
+def suppress_coordinator_sleep():
+    """Suppress asyncio.sleep inside the coordinator for all test modules.
+
+    The coordinator applies a random jitter (0–10 s) before every poll and an
+    exponential-backoff delay after consecutive failures.  Letting these sleeps
+    run for real inflates the test-suite runtime by minutes.  Any test that
+    explicitly checks sleep call-counts can shadow this fixture with its own
+    inner ``patch(...)`` context manager.
+    """
+    with patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep"):
+        yield

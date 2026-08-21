@@ -8,6 +8,11 @@ The coordinator owns the vessel state dictionary and is responsible for:
   records, and hourly/daily traffic patterns) that persist even after vessels
   are purged from the active registry.
 - Polling the active Kystverket client and maintaining vessel history.
+- Tracking consecutive failures and firing a persistent-connectivity-issue
+  event after PERSISTENT_FAILURE_THRESHOLD consecutive polling failures so
+  that automations can alert the user.
+- Exposing last_successful_update so dashboards and sensors can display when
+  vessel data was last successfully retrieved.
 """
 
 from __future__ import annotations
@@ -66,6 +71,16 @@ _LOGGER = logging.getLogger(__name__)
 # get_vessels_in_box.  A Protocol would be cleaner, but a Union is simpler
 # and sufficient for static analysis without adding a new public module.
 VesselClient = KystverketClient | AISHubClient | VesselFinderClient
+
+# Number of consecutive update failures before a persistent-connectivity-issue
+# event is fired on the HA event bus.  Keeps alert noise low for transient
+# blips while still notifying users of sustained outages.
+PERSISTENT_FAILURE_THRESHOLD = 3
+
+# Exponential-backoff cap (seconds).  Backoff grows as
+# min(base * 2 ** (failures - 1), BACKOFF_MAX_SECONDS).
+BACKOFF_BASE_SECONDS = 5
+BACKOFF_MAX_SECONDS = 300
 
 # ---------------------------------------------------------------------------
 # Internal geometry helper
@@ -247,6 +262,9 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         self._statistics: AreaStatistics = AreaStatistics()
         # Entry timestamps — records when each vessel entered the zone this session.
         self._entry_times: dict[str, datetime] = {}
+        # Failure tracking for exponential backoff and persistent-failure alerts.
+        self._consecutive_failures: int = 0
+        self._last_successful_update: datetime | None = None
 
         # Source-aware safety compliance: if any configured source is AISHub
         # (an official API), use the faster API floor; otherwise use the
@@ -305,6 +323,20 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 self._entry.data.get(CONF_STALE_TIMEOUT, DEFAULT_STALE_TIMEOUT),
             )
         )
+
+    @property
+    def last_successful_update(self) -> datetime | None:
+        """Return the UTC timestamp of the last successful data fetch.
+
+        Returns ``None`` until at least one poll has completed without error.
+        Sensors and dashboards can use this to display data freshness.
+        """
+        return self._last_successful_update
+
+    @property
+    def consecutive_failures(self) -> int:
+        """Return the number of consecutive update failures since the last success."""
+        return self._consecutive_failures
 
     @property
     def anchored_vessels(self) -> dict[str, VesselData]:
@@ -429,6 +461,22 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         _LOGGER.debug("Waiting %.1f s jitter before polling", jitter)
         await asyncio.sleep(jitter)
 
+        # Exponential backoff: if recent polls have all failed, wait before
+        # issuing another request so we don't hammer a temporarily unavailable
+        # endpoint.  The delay is capped at BACKOFF_MAX_SECONDS and is applied
+        # *in addition* to the normal jitter delay above.
+        if self._consecutive_failures > 0:
+            backoff = min(
+                BACKOFF_BASE_SECONDS * (2 ** (self._consecutive_failures - 1)),
+                BACKOFF_MAX_SECONDS,
+            )
+            _LOGGER.debug(
+                "Applying exponential backoff: %.0f s (consecutive failures: %d)",
+                backoff,
+                self._consecutive_failures,
+            )
+            await asyncio.sleep(backoff)
+
         config: dict = {**self._entry.data, **self._entry.options}
         tracking_mode = config.get(CONF_TRACKING_MODE, TRACKING_MODE_RADIUS)
 
@@ -460,6 +508,26 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
         # Fail only when every source returned None.
         if all(r is None for r in results):
             error_details = next((error for error in errors if error), None)
+            self._consecutive_failures += 1
+            _LOGGER.error(
+                "Vessel data fetch failed (consecutive failures: %d)",
+                self._consecutive_failures,
+            )
+            # Fire the connectivity-issue event exactly once when crossing the
+            # threshold — not on every subsequent failure — to avoid event-bus noise
+            # during sustained outages.  The counter resets on the next success.
+            if self._consecutive_failures == PERSISTENT_FAILURE_THRESHOLD:
+                self.hass.bus.async_fire(
+                    "marinetraffic_connectivity_issue",
+                    {
+                        "consecutive_failures": self._consecutive_failures,
+                        "last_successful_update": (
+                            self._last_successful_update.isoformat()
+                            if self._last_successful_update
+                            else None
+                        ),
+                    },
+                )
             if len(all_clients) == 1:
                 message = "Kystverket / BarentsWatch request failed to return vessel data"
                 if error_details:
@@ -616,6 +684,14 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
             len(self._anchored_vessels),
             len(stale) + len(stale_anchored),
         )
+        # Reset failure counter and record timestamp on a successful poll.
+        if self._consecutive_failures > 0:
+            _LOGGER.info(
+                "Vessel data fetch recovered after %d consecutive failure(s)",
+                self._consecutive_failures,
+            )
+        self._consecutive_failures = 0
+        self._last_successful_update = now
         return dict(self._vessels)
 
     # ------------------------------------------------------------------
