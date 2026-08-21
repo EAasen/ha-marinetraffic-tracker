@@ -644,3 +644,156 @@ async def test_get_position_history_returns_copy() -> None:
     history.append({"latitude": 0, "longitude": 0, "timestamp": "fake"})
 
     assert len(coordinator.get_position_history(_CARGO_VESSEL.mmsi)) == original_len
+
+
+# ---------------------------------------------------------------------------
+# Exponential backoff, failure tracking, and last_successful_update tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_last_successful_update_none_initially() -> None:
+    """last_successful_update must be None before any successful poll."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+
+    coordinator = _make_coordinator(hass, client)
+    assert coordinator.last_successful_update is None
+
+
+@pytest.mark.asyncio
+async def test_last_successful_update_set_after_successful_poll() -> None:
+    """last_successful_update must be set to a UTC datetime after a successful poll."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+
+    coordinator = _make_coordinator(hass, client)
+    before = datetime.now(UTC)
+    await coordinator._async_update_data()
+    after = datetime.now(UTC)
+
+    ts = coordinator.last_successful_update
+    assert ts is not None
+    assert before <= ts <= after
+
+
+@pytest.mark.asyncio
+async def test_consecutive_failures_increments_on_failure() -> None:
+    """consecutive_failures must increment each time the poll fails."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("timeout"))
+
+    coordinator = _make_coordinator(hass, client)
+    for i in range(1, 4):
+        with pytest.raises(Exception):  # noqa: B017
+            await coordinator._async_update_data()
+        assert coordinator.consecutive_failures == i
+
+
+@pytest.mark.asyncio
+async def test_consecutive_failures_resets_after_success() -> None:
+    """consecutive_failures must reset to 0 after a successful poll."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("timeout"))
+
+    coordinator = _make_coordinator(hass, client)
+    with pytest.raises(Exception):  # noqa: B017
+        await coordinator._async_update_data()
+    assert coordinator.consecutive_failures == 1
+
+    # Now let it succeed
+    client.get_vessels_in_radius = AsyncMock(return_value=[])
+    with patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep"):
+        await coordinator._async_update_data()
+    assert coordinator.consecutive_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_persistent_failure_event_fired_at_threshold() -> None:
+    """A connectivity-issue event must fire once the failure threshold is reached."""
+    from custom_components.marinetraffic_tracker.coordinator import PERSISTENT_FAILURE_THRESHOLD
+
+    hass = MagicMock()
+    fired_events: list[str] = []
+
+    def capture(event_type: str, data: dict) -> None:
+        fired_events.append(event_type)
+
+    hass.bus = MagicMock()
+    hass.bus.async_fire = capture
+
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("timeout"))
+
+    coordinator = _make_coordinator(hass, client)
+    for _ in range(PERSISTENT_FAILURE_THRESHOLD):
+        with pytest.raises(Exception):  # noqa: B017
+            await coordinator._async_update_data()
+
+    assert "marinetraffic_connectivity_issue" in fired_events
+
+
+@pytest.mark.asyncio
+async def test_persistent_failure_event_not_fired_before_threshold() -> None:
+    """No connectivity-issue event must fire before the failure threshold is reached."""
+    from custom_components.marinetraffic_tracker.coordinator import PERSISTENT_FAILURE_THRESHOLD
+
+    hass = MagicMock()
+    fired_events: list[str] = []
+
+    def capture(event_type: str, data: dict) -> None:
+        fired_events.append(event_type)
+
+    hass.bus = MagicMock()
+    hass.bus.async_fire = capture
+
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("timeout"))
+
+    coordinator = _make_coordinator(hass, client)
+    for _ in range(PERSISTENT_FAILURE_THRESHOLD - 1):
+        with pytest.raises(Exception):  # noqa: B017
+            await coordinator._async_update_data()
+
+    assert "marinetraffic_connectivity_issue" not in fired_events
+
+
+@pytest.mark.asyncio
+async def test_exponential_backoff_sleep_called_on_consecutive_failures() -> None:
+    """Exponential backoff sleep must be called when consecutive_failures > 0."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("timeout"))
+
+    coordinator = _make_coordinator(hass, client)
+    # First failure — no backoff yet
+    with (
+        patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep") as mock_sleep,
+        pytest.raises(Exception),  # noqa: B017
+    ):
+        await coordinator._async_update_data()
+    # Only jitter sleep on the first call (consecutive_failures was 0)
+    assert mock_sleep.call_count == 1
+
+    # Second failure — backoff sleep must also be called
+    with (
+        patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep") as mock_sleep,
+        pytest.raises(Exception),  # noqa: B017
+    ):
+        await coordinator._async_update_data()
+    # jitter + backoff = 2 sleep calls
+    assert mock_sleep.call_count == 2
