@@ -22,6 +22,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .aishub_client import AISHubClient
@@ -56,7 +57,7 @@ from .const import (
     MIN_UPDATE_INTERVAL_API,
     TRACKING_MODE_RADIUS,
 )
-from .kystverket_client import KystverketClient
+from .kystverket_client import KystverketAuthError, KystverketClient
 from .vesselfinder_client import VesselFinderClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -384,6 +385,9 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 ),
                 None,
             )
+        except KystverketAuthError as exc:
+            _LOGGER.error("Authentication error from data source: %s", exc)
+            raise ConfigEntryAuthFailed(str(exc)) from exc
         except Exception as exc:  # noqa: BLE001
             _LOGGER.error("Data source fetch failed: %s", exc)
             return None, str(exc)
