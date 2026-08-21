@@ -693,10 +693,11 @@ async def test_consecutive_failures_increments_on_failure() -> None:
     client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("timeout"))
 
     coordinator = _make_coordinator(hass, client)
-    for i in range(1, 4):
-        with pytest.raises(Exception):  # noqa: B017
-            await coordinator._async_update_data()
-        assert coordinator.consecutive_failures == i
+    with patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep"):
+        for i in range(1, 4):
+            with pytest.raises(Exception):  # noqa: B017
+                await coordinator._async_update_data()
+            assert coordinator.consecutive_failures == i
 
 
 @pytest.mark.asyncio
@@ -709,8 +710,9 @@ async def test_consecutive_failures_resets_after_success() -> None:
     client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("timeout"))
 
     coordinator = _make_coordinator(hass, client)
-    with pytest.raises(Exception):  # noqa: B017
-        await coordinator._async_update_data()
+    with patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep"):
+        with pytest.raises(Exception):  # noqa: B017
+            await coordinator._async_update_data()
     assert coordinator.consecutive_failures == 1
 
     # Now let it succeed
@@ -738,9 +740,10 @@ async def test_persistent_failure_event_fired_at_threshold() -> None:
     client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("timeout"))
 
     coordinator = _make_coordinator(hass, client)
-    for _ in range(PERSISTENT_FAILURE_THRESHOLD):
-        with pytest.raises(Exception):  # noqa: B017
-            await coordinator._async_update_data()
+    with patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep"):
+        for _ in range(PERSISTENT_FAILURE_THRESHOLD):
+            with pytest.raises(Exception):  # noqa: B017
+                await coordinator._async_update_data()
 
     assert "marinetraffic_connectivity_issue" in fired_events
 
@@ -763,9 +766,10 @@ async def test_persistent_failure_event_not_fired_before_threshold() -> None:
     client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("timeout"))
 
     coordinator = _make_coordinator(hass, client)
-    for _ in range(PERSISTENT_FAILURE_THRESHOLD - 1):
-        with pytest.raises(Exception):  # noqa: B017
-            await coordinator._async_update_data()
+    with patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep"):
+        for _ in range(PERSISTENT_FAILURE_THRESHOLD - 1):
+            with pytest.raises(Exception):  # noqa: B017
+                await coordinator._async_update_data()
 
     assert "marinetraffic_connectivity_issue" not in fired_events
 
@@ -797,3 +801,34 @@ async def test_exponential_backoff_sleep_called_on_consecutive_failures() -> Non
         await coordinator._async_update_data()
     # jitter + backoff = 2 sleep calls
     assert mock_sleep.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_persistent_failure_event_fired_only_once_per_outage() -> None:
+    """Connectivity-issue event must fire exactly once per outage, not on every failure."""
+    from custom_components.marinetraffic_tracker.coordinator import PERSISTENT_FAILURE_THRESHOLD
+
+    hass = MagicMock()
+    connectivity_events: list[str] = []
+
+    def capture(event_type: str, data: dict) -> None:
+        if event_type == "marinetraffic_connectivity_issue":
+            connectivity_events.append(event_type)
+
+    hass.bus = MagicMock()
+    hass.bus.async_fire = capture
+
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(side_effect=RuntimeError("timeout"))
+
+    coordinator = _make_coordinator(hass, client)
+    # Fail well beyond the threshold
+    with patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep"):
+        for _ in range(PERSISTENT_FAILURE_THRESHOLD + 3):
+            with pytest.raises(Exception):  # noqa: B017
+                await coordinator._async_update_data()
+
+    assert len(connectivity_events) == 1, (
+        "Connectivity-issue event must fire exactly once per outage, "
+        f"but fired {len(connectivity_events)} time(s)"
+    )

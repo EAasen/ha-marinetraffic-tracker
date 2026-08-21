@@ -513,7 +513,10 @@ class MarineTrafficCoordinator(DataUpdateCoordinator[dict[str, VesselData]]):
                 "Vessel data fetch failed (consecutive failures: %d)",
                 self._consecutive_failures,
             )
-            if self._consecutive_failures >= PERSISTENT_FAILURE_THRESHOLD:
+            # Fire the connectivity-issue event exactly once when crossing the
+            # threshold — not on every subsequent failure — to avoid event-bus noise
+            # during sustained outages.  The counter resets on the next success.
+            if self._consecutive_failures == PERSISTENT_FAILURE_THRESHOLD:
                 self.hass.bus.async_fire(
                     "marinetraffic_connectivity_issue",
                     {
