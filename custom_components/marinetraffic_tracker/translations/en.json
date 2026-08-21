@@ -3,6 +3,18 @@
     "step": {
       "user": {
         "title": "Norwegian Maritime Tracker",
+        "description": "Before continuing, create a free BarentsWatch account and AIS client at https://www.barentswatch.no/minside/ . Developer documentation is available at https://developer.barentswatch.no/."
+      },
+      "credentials": {
+        "title": "BarentsWatch Credentials",
+        "description": "Enter the Client ID and Client Secret for your BarentsWatch AIS client. The integration will test the credentials before continuing.",
+        "data": {
+          "barentswatch_client_id": "BarentsWatch Client ID",
+          "barentswatch_client_secret": "BarentsWatch Client Secret"
+        }
+      },
+      "mode": {
+        "title": "Tracking Mode",
         "description": "Choose how to define the Norwegian area you want to monitor.",
         "data": {
           "tracking_mode": "Tracking Mode"
@@ -31,24 +43,22 @@
           "west": "West Longitude"
         }
       },
-      "timing": {
-        "title": "Kystverket / BarentsWatch Access",
-        "description": "Enter your free BarentsWatch API credentials and choose how often to refresh live AIS data.",
+      "options": {
+        "title": "Tracking Options",
+        "description": "Choose how often to refresh live AIS data and which vessels to show.",
         "data": {
-          "barentswatch_client_id": "BarentsWatch Client ID",
-          "barentswatch_client_secret": "BarentsWatch Client Secret",
           "update_interval": "Update Interval (seconds)",
           "stale_timeout": "Stale Vessel Timeout (seconds)",
           "filter_vessel_types": "Allowed Vessel Types",
-          "exclude_anchored": "Exclude Anchored & Moored Vessels from Live Map"
+          "exclude_anchored": "Exclude Anchored Vessels from Live Map",
+          "exclude_moored": "Exclude Moored Vessels from Live Map"
         },
         "data_description": {
-          "barentswatch_client_id": "Create a free BarentsWatch application to get a client ID for the official Norwegian AIS API.",
-          "barentswatch_client_secret": "The client secret paired with your BarentsWatch application.",
           "update_interval": "How often to poll Kystverket live AIS data. Minimum 5 seconds.",
           "stale_timeout": "A vessel not seen for this long will be removed.",
           "filter_vessel_types": "Only show vessels of the selected types. Leave empty to show all vessel types.",
-          "exclude_anchored": "When enabled, vessels with 'At Anchor' or 'Moored' status are removed from the live map and device tracker entities but still appear in the summary attributes."
+          "exclude_anchored": "When enabled, vessels with 'At Anchor' status are removed from the live map and device tracker entities but still appear in the summary attributes.",
+          "exclude_moored": "When enabled, vessels with 'Moored' status are removed from the live map and device tracker entities but still appear in the summary attributes."
         }
       }
     },
@@ -56,7 +66,9 @@
       "south_gte_north": "South latitude must be strictly less than north latitude.",
       "west_gte_east": "West longitude must be strictly less than east longitude.",
       "barentswatch_client_id_required": "A BarentsWatch client ID is required.",
-      "barentswatch_client_secret_required": "A BarentsWatch client secret is required."
+      "barentswatch_client_secret_required": "A BarentsWatch client secret is required.",
+      "invalid_auth": "Unable to authenticate with BarentsWatch. Check the Client ID and Client Secret.",
+      "cannot_connect": "Unable to connect to BarentsWatch right now. Try again later."
     },
     "abort": {
       "already_configured": "This tracking area is already configured."
@@ -65,21 +77,16 @@
   "options": {
     "step": {
       "init": {
-        "title": "Kystverket / BarentsWatch Settings",
-        "description": "Update the official Norwegian AIS API credentials and polling settings.",
+        "title": "Tracking Settings",
+        "description": "Update polling and vessel filtering settings without re-entering BarentsWatch credentials.",
         "data": {
-          "barentswatch_client_id": "BarentsWatch Client ID",
-          "barentswatch_client_secret": "BarentsWatch Client Secret",
           "update_interval": "Update Interval (seconds)",
           "stale_timeout": "Stale Vessel Timeout (seconds)",
           "filter_vessel_types": "Allowed Vessel Types",
-          "exclude_anchored": "Exclude Anchored & Moored Vessels from Live Map"
+          "exclude_anchored": "Exclude Anchored Vessels from Live Map",
+          "exclude_moored": "Exclude Moored Vessels from Live Map"
         }
       }
-    },
-    "error": {
-      "barentswatch_client_id_required": "A BarentsWatch client ID is required.",
-      "barentswatch_client_secret_required": "A BarentsWatch client secret is required."
     }
   }
 }

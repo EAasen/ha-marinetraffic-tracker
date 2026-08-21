@@ -61,6 +61,10 @@ class KystverketClient:
             if _haversine_km(latitude, longitude, vessel.latitude, vessel.longitude) <= radius_km
         ]
 
+    async def async_validate_credentials(self) -> None:
+        """Validate the configured BarentsWatch credentials."""
+        await self._get_access_token()
+
     async def get_vessels_in_box(
         self,
         north: float,

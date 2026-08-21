@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_BARENTSWATCH_CLIENT_ID,
@@ -16,6 +18,7 @@ from .const import (
     CONF_DATA_SOURCE,
     CONF_EAST,
     CONF_EXCLUDE_ANCHORED,
+    CONF_EXCLUDE_MOORED,
     CONF_FILTER_VESSEL_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
@@ -28,6 +31,7 @@ from .const import (
     CONF_WEST,
     DATA_SOURCE_KYSTVERKET,
     DEFAULT_EXCLUDE_ANCHORED,
+    DEFAULT_EXCLUDE_MOORED,
     DEFAULT_RADIUS_KM,
     DEFAULT_STALE_TIMEOUT,
     DEFAULT_TRACKING_MODE,
@@ -38,6 +42,7 @@ from .const import (
     TRACKING_MODE_RADIUS,
     VESSEL_TYPE_LABELS,
 )
+from .kystverket_client import KystverketClient
 
 _CONF_LOCATION = "location"
 _METRES_PER_KM = 1000.0
@@ -60,6 +65,7 @@ _VESSEL_TYPE_OPTIONS: list[selector.SelectOptionDict] = [
     for value, label in VESSEL_TYPE_LABELS.items()
 ]
 
+_STEP_INTRO_SCHEMA = vol.Schema({})
 _STEP_MODE_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_TRACKING_MODE, default=DEFAULT_TRACKING_MODE): selector.SelectSelector(
@@ -95,6 +101,26 @@ def _default_coordinates(hass: HomeAssistant, defaults: dict[str, Any]) -> tuple
         return float(hass_lat), float(hass_lon)
 
     return _NORWAY_LATITUDE, _NORWAY_LONGITUDE
+
+
+def _credentials_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Build the credential step schema."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_BARENTSWATCH_CLIENT_ID,
+                default=defaults.get(CONF_BARENTSWATCH_CLIENT_ID, ""),
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
+            vol.Required(
+                CONF_BARENTSWATCH_CLIENT_SECRET,
+                default=defaults.get(CONF_BARENTSWATCH_CLIENT_SECRET, ""),
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+        }
+    )
 
 
 def _radius_schema(hass: HomeAssistant, defaults: dict[str, Any]) -> vol.Schema:
@@ -141,7 +167,8 @@ def _box_schema(defaults: dict[str, Any]) -> vol.Schema:
     )
 
 
-def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
+def _options_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Build the shared non-authentication options schema."""
     try:
         raw_interval = int(defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
     except (ValueError, TypeError):
@@ -149,18 +176,6 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
 
     return vol.Schema(
         {
-            vol.Required(
-                CONF_BARENTSWATCH_CLIENT_ID,
-                default=defaults.get(CONF_BARENTSWATCH_CLIENT_ID, ""),
-            ): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-            vol.Required(
-                CONF_BARENTSWATCH_CLIENT_SECRET,
-                default=defaults.get(CONF_BARENTSWATCH_CLIENT_SECRET, ""),
-            ): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-            ),
             vol.Required(
                 CONF_UPDATE_INTERVAL,
                 default=max(raw_interval, MIN_UPDATE_INTERVAL_API),
@@ -183,8 +198,32 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
                 CONF_EXCLUDE_ANCHORED,
                 default=defaults.get(CONF_EXCLUDE_ANCHORED, DEFAULT_EXCLUDE_ANCHORED),
             ): bool,
+            vol.Optional(
+                CONF_EXCLUDE_MOORED,
+                default=defaults.get(CONF_EXCLUDE_MOORED, DEFAULT_EXCLUDE_MOORED),
+            ): bool,
         }
     )
+
+
+async def _async_validate_credentials(
+    hass: HomeAssistant,
+    client_id: str,
+    client_secret: str,
+) -> str | None:
+    """Validate BarentsWatch credentials against the live token endpoint."""
+    client = KystverketClient(
+        async_get_clientsession(hass),
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+    try:
+        await client.async_validate_credentials()
+    except RuntimeError:
+        return "invalid_auth"
+    except (aiohttp.ClientError, TimeoutError):
+        return "cannot_connect"
+    return None
 
 
 class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -196,6 +235,43 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
         self._data: dict[str, Any] = {CONF_DATA_SOURCE: DATA_SOURCE_KYSTVERKET}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Show setup instructions before collecting credentials."""
+        if user_input is not None:
+            return await self.async_step_credentials()
+
+        return self.async_show_form(step_id="user", data_schema=_STEP_INTRO_SCHEMA)
+
+    async def async_step_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Collect and validate BarentsWatch credentials."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            client_id = str(user_input.get(CONF_BARENTSWATCH_CLIENT_ID, "")).strip()
+            client_secret = str(user_input.get(CONF_BARENTSWATCH_CLIENT_SECRET, "")).strip()
+
+            if not client_id:
+                errors[CONF_BARENTSWATCH_CLIENT_ID] = "barentswatch_client_id_required"
+            if not client_secret:
+                errors[CONF_BARENTSWATCH_CLIENT_SECRET] = "barentswatch_client_secret_required"
+
+            if not errors:
+                credential_error = await _async_validate_credentials(
+                    self.hass, client_id, client_secret
+                )
+                if credential_error is None:
+                    self._data[CONF_BARENTSWATCH_CLIENT_ID] = client_id
+                    self._data[CONF_BARENTSWATCH_CLIENT_SECRET] = client_secret
+                    return await self.async_step_mode()
+                errors["base"] = credential_error
+
+        return self.async_show_form(
+            step_id="credentials",
+            data_schema=_credentials_schema(self._data),
+            errors=errors,
+        )
+
+    async def async_step_mode(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Choose the tracking mode."""
         if user_input is not None:
             self._data[CONF_TRACKING_MODE] = user_input[CONF_TRACKING_MODE]
@@ -203,7 +279,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_radius()
             return await self.async_step_box()
 
-        return self.async_show_form(step_id="user", data_schema=_STEP_MODE_SCHEMA)
+        return self.async_show_form(step_id="mode", data_schema=_STEP_MODE_SCHEMA)
 
     async def async_step_radius(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Collect center coordinates and radius."""
@@ -212,7 +288,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data[CONF_LATITUDE] = loc["latitude"]
             self._data[CONF_LONGITUDE] = loc["longitude"]
             self._data[CONF_RADIUS_KM] = loc["radius"] / _METRES_PER_KM
-            return await self.async_step_timing()
+            return await self.async_step_options()
 
         return self.async_show_form(
             step_id="radius",
@@ -229,7 +305,7 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "west_gte_east"
             else:
                 self._data.update(user_input)
-                return await self.async_step_timing()
+                return await self.async_step_options()
 
         defaults = dict(self._data)
         lat, lon = _default_coordinates(self.hass, defaults)
@@ -241,30 +317,17 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_timing(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Collect Kystverket credentials and polling settings."""
-        errors: dict[str, str] = {}
+    async def async_step_options(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Collect non-authentication options and create the entry."""
         if user_input is not None:
-            client_id = str(user_input.get(CONF_BARENTSWATCH_CLIENT_ID, "")).strip()
-            client_secret = str(user_input.get(CONF_BARENTSWATCH_CLIENT_SECRET, "")).strip()
-
-            if not client_id:
-                errors[CONF_BARENTSWATCH_CLIENT_ID] = "barentswatch_client_id_required"
-            if not client_secret:
-                errors[CONF_BARENTSWATCH_CLIENT_SECRET] = "barentswatch_client_secret_required"
-
-            if not errors:
-                self._data.update(user_input)
-                self._data[CONF_BARENTSWATCH_CLIENT_ID] = client_id
-                self._data[CONF_BARENTSWATCH_CLIENT_SECRET] = client_secret
-                await self.async_set_unique_id(self._unique_id())
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(title=self._make_title(), data=self._data)
+            self._data.update(user_input)
+            await self.async_set_unique_id(self._unique_id())
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(title=self._make_title(), data=self._data)
 
         return self.async_show_form(
-            step_id="timing",
-            data_schema=_timing_schema(self._data),
-            errors=errors,
+            step_id="options",
+            data_schema=_options_schema(self._data),
         )
 
     def _unique_id(self) -> str:
@@ -302,33 +365,20 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class MarineTrafficOptionsFlow(OptionsFlow):
-    """Allow users to update Kystverket credentials and polling settings."""
+    """Allow users to update non-authentication tracking options."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         self._config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the single-step options flow."""
-        errors: dict[str, str] = {}
         if user_input is not None:
-            client_id = str(user_input.get(CONF_BARENTSWATCH_CLIENT_ID, "")).strip()
-            client_secret = str(user_input.get(CONF_BARENTSWATCH_CLIENT_SECRET, "")).strip()
-
-            if not client_id:
-                errors[CONF_BARENTSWATCH_CLIENT_ID] = "barentswatch_client_id_required"
-            if not client_secret:
-                errors[CONF_BARENTSWATCH_CLIENT_SECRET] = "barentswatch_client_secret_required"
-
-            if not errors:
-                user_input[CONF_BARENTSWATCH_CLIENT_ID] = client_id
-                user_input[CONF_BARENTSWATCH_CLIENT_SECRET] = client_secret
-                user_input[CONF_DATA_SOURCE] = DATA_SOURCE_KYSTVERKET
-                return self.async_create_entry(data=user_input)
+            user_input[CONF_DATA_SOURCE] = DATA_SOURCE_KYSTVERKET
+            return self.async_create_entry(data=user_input)
 
         current = {**self._config_entry.data, **self._config_entry.options}
         current.setdefault(CONF_DATA_SOURCE, DATA_SOURCE_KYSTVERKET)
         return self.async_show_form(
             step_id="init",
-            data_schema=_timing_schema(current),
-            errors=errors,
+            data_schema=_options_schema(current),
         )
