@@ -2,28 +2,28 @@
   "config": {
     "step": {
       "user": {
-        "title": "MarineTraffic Tracker",
-        "description": "Choose how to define your vessel tracking area.",
+        "title": "Norwegian Maritime Tracker",
+        "description": "Choose how to define the Norwegian area you want to monitor.",
         "data": {
           "tracking_mode": "Tracking Mode"
         },
         "data_description": {
-          "tracking_mode": "Radius: track vessels within a circular area centred on a point. Box: track vessels within a geographic bounding box."
+          "tracking_mode": "Radius: track vessels around a point. Bounding box: track vessels inside a rectangle."
         }
       },
       "radius": {
-        "title": "Radius Tracking Area",
-        "description": "Drop a pin on the map to set your tracking area centre, then drag the circle edge to set the radius.",
+        "title": "Tracking Area",
+        "description": "Drop a pin in Norwegian waters and adjust the radius.",
         "data": {
           "location": "Tracking Area"
         },
         "data_description": {
-          "location": "Centre point and radius of the circular area to monitor for vessels."
+          "location": "Centre point and radius of the area to monitor."
         }
       },
       "box": {
         "title": "Bounding Box Tracking Area",
-        "description": "Enter the north/east/south/west boundaries of your tracking area.",
+        "description": "Enter the north/east/south/west boundaries of the Norwegian area to monitor.",
         "data": {
           "north": "North Latitude",
           "east": "East Longitude",
@@ -31,44 +31,32 @@
           "west": "West Longitude"
         }
       },
-      "source": {
-        "title": "Data Source",
-        "description": "Choose your primary AIS data source, optional additional sources, and an optional fallback source for scraper failures.",
-        "data": {
-          "data_source": "Primary Data Source",
-          "extra_sources": "Additional Sources (polled concurrently)",
-          "fallback_source": "Fallback Data Source",
-          "aishub_api_key": "AISHub API Key (username)"
-        },
-        "data_description": {
-          "data_source": "MarineTraffic and VesselFinder use live-map scraping and may occasionally be blocked or return no vessels. AISHub uses an official API and requires an API key.",
-          "extra_sources": "Additional sources are polled alongside the primary source. Results are merged by MMSI and the freshest observation wins. AISHub requires an API key.",
-          "fallback_source": "Use this source only when the primary and additional sources return no vessel data. Select 'None' to disable fallback.",
-          "aishub_api_key": "Required when AISHub is selected as primary, additional, or fallback source. Obtain a free key by contributing AIS data to aishub.net."
-        }
-      },
       "timing": {
-        "title": "Polling & Cleanup Settings",
-        "description": "Configure how often vessels are fetched and when stale vessels are removed.",
+        "title": "Kystverket / BarentsWatch Access",
+        "description": "Enter your free BarentsWatch API credentials and choose how often to refresh live AIS data.",
         "data": {
+          "barentswatch_client_id": "BarentsWatch Client ID",
+          "barentswatch_client_secret": "BarentsWatch Client Secret",
           "update_interval": "Update Interval (seconds)",
           "stale_timeout": "Stale Vessel Timeout (seconds)",
           "filter_vessel_types": "Allowed Vessel Types",
           "exclude_anchored": "Exclude Anchored & Moored Vessels from Live Map"
         },
         "data_description": {
-          "update_interval": "How often to poll for vessel data. Minimum 30 s for scrapers (MarineTraffic/VesselFinder); minimum 5 s for AISHub API.",
-          "stale_timeout": "A vessel not seen for this long will be removed. Default: 3600 s (1 hour). Max: 86400 s (24 hours).",
+          "barentswatch_client_id": "Create a free BarentsWatch application to get a client ID for the official Norwegian AIS API.",
+          "barentswatch_client_secret": "The client secret paired with your BarentsWatch application.",
+          "update_interval": "How often to poll Kystverket live AIS data. Minimum 5 seconds.",
+          "stale_timeout": "A vessel not seen for this long will be removed.",
           "filter_vessel_types": "Only show vessels of the selected types. Leave empty to show all vessel types.",
-          "exclude_anchored": "When enabled, vessels with 'At Anchor' or 'Moored' status are removed from the live map and device tracker entities but still appear in the Vessel Count sensor's anchored_vessels summary attribute. Position history for anchored vessels is always deduplicated to avoid recorder bloat."
+          "exclude_anchored": "When enabled, vessels with 'At Anchor' or 'Moored' status are removed from the live map and device tracker entities but still appear in the summary attributes."
         }
       }
     },
     "error": {
       "south_gte_north": "South latitude must be strictly less than north latitude.",
       "west_gte_east": "West longitude must be strictly less than east longitude.",
-      "aishub_api_key_required": "An AISHub API key (username) is required when AISHub is selected as a data source.",
-      "fallback_same_as_primary": "The fallback source must differ from the primary source."
+      "barentswatch_client_id_required": "A BarentsWatch client ID is required.",
+      "barentswatch_client_secret_required": "A BarentsWatch client secret is required."
     },
     "abort": {
       "already_configured": "This tracking area is already configured."
@@ -77,40 +65,29 @@
   "options": {
     "step": {
       "init": {
-        "title": "Data Source Settings",
-        "description": "Change the primary data source, optional additional sources, fallback behavior, and AISHub API key.",
+        "title": "Kystverket / BarentsWatch Settings",
+        "description": "Update the official Norwegian AIS API credentials and polling settings.",
         "data": {
-          "data_source": "Primary Data Source",
-          "extra_sources": "Additional Sources (polled concurrently)",
-          "fallback_source": "Fallback Data Source",
-          "aishub_api_key": "AISHub API Key (username)"
-        },
-        "data_description": {
-          "data_source": "MarineTraffic and VesselFinder use live-map scraping. AISHub uses an official API and requires an API key.",
-          "extra_sources": "Additional sources are polled alongside the primary source and merged by MMSI. AISHub requires an API key.",
-          "fallback_source": "Use this source only when the primary and additional sources return no vessel data.",
-          "aishub_api_key": "Required when AISHub is selected as primary, additional, or fallback source."
-        }
-      },
-      "timing": {
-        "title": "Update Polling & Cleanup Settings",
-        "data": {
+          "barentswatch_client_id": "BarentsWatch Client ID",
+          "barentswatch_client_secret": "BarentsWatch Client Secret",
           "update_interval": "Update Interval (seconds)",
           "stale_timeout": "Stale Vessel Timeout (seconds)",
           "filter_vessel_types": "Allowed Vessel Types",
           "exclude_anchored": "Exclude Anchored & Moored Vessels from Live Map"
         },
         "data_description": {
-          "update_interval": "How often to poll for vessel data. Minimum 30 s for scrapers; minimum 5 s for AISHub.",
+          "barentswatch_client_id": "Create a free BarentsWatch application to get a client ID for the official Norwegian AIS API.",
+          "barentswatch_client_secret": "The client secret paired with your BarentsWatch application.",
+          "update_interval": "How often to poll Kystverket live AIS data. Minimum 5 seconds.",
           "stale_timeout": "A vessel not seen for this long will be removed.",
           "filter_vessel_types": "Only show vessels of the selected types. Leave empty to show all vessel types.",
-          "exclude_anchored": "When enabled, vessels with 'At Anchor' or 'Moored' status are removed from the live map and device tracker entities but still appear in the Vessel Count sensor's anchored_vessels summary attribute."
+          "exclude_anchored": "When enabled, vessels with 'At Anchor' or 'Moored' status are removed from the live map and device tracker entities but still appear in the summary attributes."
         }
       }
     },
     "error": {
-      "aishub_api_key_required": "An AISHub API key (username) is required when AISHub is selected as a data source.",
-      "fallback_same_as_primary": "The fallback source must differ from the primary source."
+      "barentswatch_client_id_required": "A BarentsWatch client ID is required.",
+      "barentswatch_client_secret_required": "A BarentsWatch client secret is required."
     }
   }
 }
