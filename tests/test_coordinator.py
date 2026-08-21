@@ -10,9 +10,11 @@ import pytest
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.marinetraffic_tracker.const import (
+    CONF_DATA_SOURCE,
     CONF_FILTER_VESSEL_TYPES,
     CONF_STALE_TIMEOUT,
     CONF_UPDATE_INTERVAL,
+    DATA_SOURCE_MARINETRAFFIC,
     DEFAULT_HISTORY_SIZE,
     DEFAULT_JITTER_MAX,
     DEFAULT_STALE_TIMEOUT,
@@ -94,13 +96,14 @@ def test_hard_floor_value_is_30() -> None:
 
 
 def test_coordinator_enforces_hard_floor() -> None:
-    """Coordinator __init__ must use MIN_UPDATE_INTERVAL when entry has a lower value."""
+    """Coordinator __init__ must use MIN_UPDATE_INTERVAL when a scraper entry has a lower value."""
     hass = MagicMock()
     client = AsyncMock()
     entry = _make_entry(
         data={
-            CONF_UPDATE_INTERVAL: 5,  # below floor
+            CONF_UPDATE_INTERVAL: 5,  # below scraper floor
             CONF_STALE_TIMEOUT: 600,
+            CONF_DATA_SOURCE: DATA_SOURCE_MARINETRAFFIC,  # explicit scraper source
             "tracking_mode": "radius",
             "latitude": 59.9,
             "longitude": 10.7,
