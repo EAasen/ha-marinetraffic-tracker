@@ -109,12 +109,12 @@ class KystverketClient:
             timeout=_REQUEST_TIMEOUT,
         ) as resp:
             if resp.status == 400:
-                _LOGGER.error(
+                raise RuntimeError(
                     "BarentsWatch token request failed (HTTP 400). "
                     "Check that your Client ID and Client Secret are correct."
                 )
-            elif resp.status == 401:
-                _LOGGER.error(
+            if resp.status == 401:
+                raise RuntimeError(
                     "BarentsWatch authentication failed (HTTP 401). "
                     "The Client ID or Client Secret is invalid."
                 )

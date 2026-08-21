@@ -475,6 +475,32 @@ class TestKystverketHTTP:
         assert session.get.call_count == 2
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("status", "match"),
+        [
+            (
+                400,
+                "BarentsWatch token request failed \\(HTTP 400\\).*Client ID and Client Secret",
+            ),
+            (
+                401,
+                "BarentsWatch authentication failed \\(HTTP 401\\).*"
+                "Client ID or Client Secret is invalid",
+            ),
+        ],
+    )
+    async def test_token_errors_raise_single_actionable_message(
+        self, status: int, match: str
+    ) -> None:
+        """Credential errors should raise a single actionable message for the coordinator."""
+        session = MagicMock()
+        session.post = MagicMock(return_value=_make_response_cm(status, {}))
+        client = KystverketClient(session, client_id="id", client_secret="secret")  # noqa: S106
+
+        with pytest.raises(RuntimeError, match=match):
+            await client._get_access_token()
+
+    @pytest.mark.asyncio
     async def test_box_request_uses_live_api_params_and_filters_outside_vessels(self) -> None:
         """The live AIS request should use the documented params and keep only in-box vessels."""
         outside_row = {
