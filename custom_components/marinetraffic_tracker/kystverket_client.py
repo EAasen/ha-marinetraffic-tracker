@@ -22,6 +22,10 @@ _TOKEN_REFRESH_BUFFER = 60
 _HEADING_NOT_AVAILABLE = 511
 
 
+class InvalidAuthError(RuntimeError):
+    """Raised when BarentsWatch credentials are rejected."""
+
+
 class KystverketClient:
     """Async client for Kystverket live AIS data via BarentsWatch."""
 
@@ -113,12 +117,12 @@ class KystverketClient:
             timeout=_REQUEST_TIMEOUT,
         ) as resp:
             if resp.status == 400:
-                raise RuntimeError(
+                raise InvalidAuthError(
                     "BarentsWatch token request failed (HTTP 400). "
                     "Check that your Client ID and Client Secret are correct."
                 )
             if resp.status == 401:
-                raise RuntimeError(
+                raise InvalidAuthError(
                     "BarentsWatch authentication failed (HTTP 401). "
                     "The Client ID or Client Secret is invalid."
                 )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import aiohttp
@@ -42,8 +43,9 @@ from .const import (
     TRACKING_MODE_RADIUS,
     VESSEL_TYPE_LABELS,
 )
-from .kystverket_client import KystverketClient
+from .kystverket_client import InvalidAuthError, KystverketClient
 
+_LOGGER = logging.getLogger(__name__)
 _CONF_LOCATION = "location"
 _METRES_PER_KM = 1000.0
 _NORWAY_LATITUDE = 60.4720
@@ -194,11 +196,11 @@ def _options_schema(defaults: dict[str, Any]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
-            vol.Optional(
+            vol.Required(
                 CONF_EXCLUDE_ANCHORED,
                 default=defaults.get(CONF_EXCLUDE_ANCHORED, DEFAULT_EXCLUDE_ANCHORED),
             ): bool,
-            vol.Optional(
+            vol.Required(
                 CONF_EXCLUDE_MOORED,
                 default=defaults.get(CONF_EXCLUDE_MOORED, DEFAULT_EXCLUDE_MOORED),
             ): bool,
@@ -219,7 +221,7 @@ async def _async_validate_credentials(
     )
     try:
         await client.async_validate_credentials()
-    except RuntimeError:
+    except InvalidAuthError:
         return "invalid_auth"
     except (aiohttp.ClientError, TimeoutError):
         return "cannot_connect"
@@ -319,15 +321,23 @@ class MarineTrafficConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_options(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Collect non-authentication options and create the entry."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            self._data.update(user_input)
-            await self.async_set_unique_id(self._unique_id())
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=self._make_title(), data=self._data)
+            try:
+                validated = _options_schema(self._data)(user_input)
+            except vol.Invalid as err:
+                _LOGGER.debug("Invalid config flow options submission: %s", err)
+                errors["base"] = "invalid_options"
+            else:
+                self._data.update(validated)
+                await self.async_set_unique_id(self._unique_id())
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=self._make_title(), data=self._data)
 
         return self.async_show_form(
             step_id="options",
             data_schema=_options_schema(self._data),
+            errors=errors,
         )
 
     def _unique_id(self) -> str:
@@ -372,13 +382,21 @@ class MarineTrafficOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the single-step options flow."""
-        if user_input is not None:
-            user_input[CONF_DATA_SOURCE] = DATA_SOURCE_KYSTVERKET
-            return self.async_create_entry(data=user_input)
-
         current = {**self._config_entry.data, **self._config_entry.options}
         current.setdefault(CONF_DATA_SOURCE, DATA_SOURCE_KYSTVERKET)
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                validated = _options_schema(current)(user_input)
+            except vol.Invalid as err:
+                _LOGGER.debug("Invalid options flow submission: %s", err)
+                errors["base"] = "invalid_options"
+            else:
+                validated[CONF_DATA_SOURCE] = DATA_SOURCE_KYSTVERKET
+                return self.async_create_entry(data=validated)
+
         return self.async_show_form(
             step_id="init",
             data_schema=_options_schema(current),
+            errors=errors,
         )

@@ -275,6 +275,36 @@ async def test_options_step_creates_entry_without_reauth() -> None:
 
 
 @pytest.mark.asyncio
+async def test_options_step_handles_invalid_values() -> None:
+    """Invalid options submissions should stay on the options step."""
+    flow = _make_config_flow()
+    flow._data.update(
+        {
+            CONF_BARENTSWATCH_CLIENT_ID: "client-id",
+            CONF_BARENTSWATCH_CLIENT_SECRET: "secret",
+            CONF_TRACKING_MODE: TRACKING_MODE_RADIUS,
+            CONF_LATITUDE: 60.4,
+            CONF_LONGITUDE: 5.3,
+            CONF_RADIUS_KM: 15.0,
+        }
+    )
+
+    result = await flow.async_step_options(
+        {
+            CONF_UPDATE_INTERVAL: MIN_UPDATE_INTERVAL_API - 1,
+            CONF_STALE_TIMEOUT: DEFAULT_STALE_TIMEOUT,
+            CONF_FILTER_VESSEL_TYPES: [],
+            CONF_EXCLUDE_ANCHORED: False,
+            CONF_EXCLUDE_MOORED: False,
+        }
+    )
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "options"
+    assert result["errors"]["base"] == "invalid_options"
+
+
+@pytest.mark.asyncio
 async def test_box_flow_validates_bounds_before_options() -> None:
     """Invalid bounding boxes should stay on the box step."""
     flow = _make_config_flow()
@@ -320,6 +350,26 @@ async def test_options_flow_persists_kystverket_source() -> None:
 
     assert result["type"] == "create_entry"
     assert result["data"][CONF_DATA_SOURCE] == DATA_SOURCE_KYSTVERKET
+
+
+@pytest.mark.asyncio
+async def test_options_flow_handles_invalid_values() -> None:
+    """Invalid direct options submissions should stay on the options form."""
+    flow = _make_options_flow()
+
+    result = await flow.async_step_init(
+        {
+            CONF_UPDATE_INTERVAL: MIN_UPDATE_INTERVAL_API - 1,
+            CONF_STALE_TIMEOUT: DEFAULT_STALE_TIMEOUT,
+            CONF_FILTER_VESSEL_TYPES: [],
+            CONF_EXCLUDE_ANCHORED: False,
+            CONF_EXCLUDE_MOORED: False,
+        }
+    )
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "init"
+    assert result["errors"]["base"] == "invalid_options"
 
 
 def test_make_title_uses_new_branding() -> None:

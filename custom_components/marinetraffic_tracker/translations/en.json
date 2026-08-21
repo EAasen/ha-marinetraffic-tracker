@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Norwegian Maritime Tracker",
-        "description": "Before continuing, create a free BarentsWatch account and AIS client at https://www.barentswatch.no/minside/ . Developer documentation is available at https://developer.barentswatch.no/."
+        "description": "Before continuing, create a free BarentsWatch account and AIS client at https://www.barentswatch.no/minside/. Developer documentation is available at https://developer.barentswatch.no/."
       },
       "credentials": {
         "title": "BarentsWatch Credentials",
@@ -68,7 +68,8 @@
       "barentswatch_client_id_required": "A BarentsWatch client ID is required.",
       "barentswatch_client_secret_required": "A BarentsWatch client secret is required.",
       "invalid_auth": "Unable to authenticate with BarentsWatch. Check the Client ID and Client Secret.",
-      "cannot_connect": "Unable to connect to BarentsWatch right now. Try again later."
+      "cannot_connect": "Unable to connect to BarentsWatch right now. Try again later.",
+      "invalid_options": "Please review the options and try again."
     },
     "abort": {
       "already_configured": "This tracking area is already configured."
@@ -87,6 +88,9 @@
           "exclude_moored": "Exclude Moored Vessels from Live Map"
         }
       }
+    },
+    "error": {
+      "invalid_options": "Please review the options and try again."
     }
   }
 }
