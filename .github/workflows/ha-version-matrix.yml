@@ -1,0 +1,49 @@
+name: HA Version Compatibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Monday at 06:00 UTC to catch upstream HA changes.
+    - cron: "0 6 * * 1"
+
+jobs:
+  compatibility:
+    name: "HA ${{ matrix.ha-version }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        ha-version:
+          - "2023.1.0"
+          - "2023.6.0"
+          - "2024.1.0"
+          - "2024.6.0"
+          - "2025.1.0"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies pinned to HA ${{ matrix.ha-version }}
+        run: |
+          pip install \
+            "homeassistant==${{ matrix.ha-version }}" \
+            pytest \
+            pytest-homeassistant-custom-component \
+            pytest-asyncio \
+            aiohttp \
+            aioresponses
+
+      - name: Run compatibility test suite
+        run: |
+          pytest tests/test_ha_version_compatibility.py -v
