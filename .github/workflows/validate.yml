@@ -1,0 +1,52 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  manifest:
+    name: manifest.json validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate JSON metadata files
+        run: |
+          python -m json.tool custom_components/marinetraffic_tracker/manifest.json > /dev/null
+          python -m json.tool hacs.json > /dev/null
+
+  hacs:
+    name: HACS addon check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run HACS validation
+        uses: hacs/action@1.0.0
+        with:
+          category: integration
+
+  hassfest:
+    name: Home Assistant schema validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run hassfest validation
+        uses: home-assistant/actions/hassfest@22.5.0

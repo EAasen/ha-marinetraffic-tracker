@@ -99,9 +99,7 @@ async def test_anchored_vessel_included_when_toggle_off() -> None:
     hass.bus = MagicMock()
     hass.bus.async_fire = MagicMock()
     client = AsyncMock()
-    client.get_vessels_in_radius = AsyncMock(
-        return_value=[_ACTIVE_VESSEL, _ANCHORED_VESSEL]
-    )
+    client.get_vessels_in_radius = AsyncMock(return_value=[_ACTIVE_VESSEL, _ANCHORED_VESSEL])
 
     coordinator = _make_coordinator(hass, client, exclude_anchored=False)
     result = await coordinator._async_update_data()
@@ -215,12 +213,12 @@ async def test_vessel_transitions_from_active_to_anchored() -> None:
     client.get_vessels_in_radius = AsyncMock(return_value=[now_anchored])
     await coordinator._async_update_data()
 
-    assert _ACTIVE_VESSEL.mmsi not in coordinator._vessels, (
-        "Vessel must leave _vessels after anchoring"
-    )
-    assert _ACTIVE_VESSEL.mmsi in coordinator._anchored_vessels, (
-        "Vessel must appear in _anchored_vessels after anchoring"
-    )
+    assert (
+        _ACTIVE_VESSEL.mmsi not in coordinator._vessels
+    ), "Vessel must leave _vessels after anchoring"
+    assert (
+        _ACTIVE_VESSEL.mmsi in coordinator._anchored_vessels
+    ), "Vessel must appear in _anchored_vessels after anchoring"
 
 
 @pytest.mark.asyncio
@@ -243,12 +241,12 @@ async def test_vessel_transitions_from_anchored_to_active() -> None:
     client.get_vessels_in_radius = AsyncMock(return_value=[now_active])
     await coordinator._async_update_data()
 
-    assert _ANCHORED_VESSEL.mmsi in coordinator._vessels, (
-        "Vessel must return to _vessels when it leaves anchor"
-    )
-    assert _ANCHORED_VESSEL.mmsi not in coordinator._anchored_vessels, (
-        "Vessel must leave _anchored_vessels when under way"
-    )
+    assert (
+        _ANCHORED_VESSEL.mmsi in coordinator._vessels
+    ), "Vessel must return to _vessels when it leaves anchor"
+    assert (
+        _ANCHORED_VESSEL.mmsi not in coordinator._anchored_vessels
+    ), "Vessel must leave _anchored_vessels when under way"
 
 
 # ---------------------------------------------------------------------------
@@ -348,9 +346,7 @@ async def test_anchored_vessel_no_movement_skips_history() -> None:
         await coordinator._async_update_data()
 
     history = coordinator.get_position_history(_ANCHORED_VESSEL.mmsi)
-    assert len(history) == 1, (
-        "Position history must not grow when anchored vessel hasn't moved"
-    )
+    assert len(history) == 1, "Position history must not grow when anchored vessel hasn't moved"
 
 
 @pytest.mark.asyncio
@@ -395,9 +391,7 @@ async def test_active_vessel_always_records_position_history() -> None:
         await coordinator._async_update_data()
 
     history = coordinator.get_position_history(_ACTIVE_VESSEL.mmsi)
-    assert len(history) == 4, (
-        "Active vessel must have a history entry for every poll cycle"
-    )
+    assert len(history) == 4, "Active vessel must have a history entry for every poll cycle"
 
 
 # ---------------------------------------------------------------------------

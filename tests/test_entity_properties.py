@@ -29,9 +29,7 @@ from custom_components.marinetraffic_tracker.const import (
     VESSEL_TYPE_ICONS,
 )
 from custom_components.marinetraffic_tracker.coordinator import MarineTrafficCoordinator
-from custom_components.marinetraffic_tracker.device_tracker import (
-    MarineTrafficVesselTracker,
-)
+from custom_components.marinetraffic_tracker.device_tracker import MarineTrafficVesselTracker
 from custom_components.marinetraffic_tracker.sensor import (
     MarineTrafficCountSensor,
     MarineTrafficVesselSensor,
@@ -384,23 +382,29 @@ class TestCountSensorAnchoredVessels:
         sensor = _make_count_sensor({vessel.mmsi: vessel}, anchored={})
         attrs = sensor.extra_state_attributes
         from custom_components.marinetraffic_tracker.const import ATTR_ANCHORED_COUNT
+
         assert attrs[ATTR_ANCHORED_COUNT] == 0
 
     def test_anchored_count_reflects_anchored_registry(self) -> None:
         """anchored_vessel_count must equal the number of anchored vessels."""
         from custom_components.marinetraffic_tracker.const import ATTR_ANCHORED_COUNT
+
         anchored1 = _make_vessel(mmsi="111111111", status="At Anchor")
         anchored2 = _make_vessel(mmsi="222222222", status="Moored")
-        sensor = _make_count_sensor({}, anchored={
-            anchored1.mmsi: anchored1,
-            anchored2.mmsi: anchored2,
-        })
+        sensor = _make_count_sensor(
+            {},
+            anchored={
+                anchored1.mmsi: anchored1,
+                anchored2.mmsi: anchored2,
+            },
+        )
         attrs = sensor.extra_state_attributes
         assert attrs[ATTR_ANCHORED_COUNT] == 2
 
     def test_anchored_vessels_list_is_present(self) -> None:
         """anchored_vessels attribute must be a list."""
         from custom_components.marinetraffic_tracker.const import ATTR_ANCHORED_VESSELS
+
         sensor = _make_count_sensor({}, anchored={})
         attrs = sensor.extra_state_attributes
         assert ATTR_ANCHORED_VESSELS in attrs
@@ -413,6 +417,7 @@ class TestCountSensorAnchoredVessels:
             ATTR_MMSI,
             ATTR_VESSEL_NAME,
         )
+
         anchored = _make_vessel(mmsi="333333333", status="At Anchor")
         anchored = VesselData(
             mmsi="333333333",
@@ -440,6 +445,7 @@ class TestCountSensorAnchoredVessels:
     def test_active_vessels_not_in_anchored_list(self) -> None:
         """Active vessels must appear in the main vessels list, not anchored_vessels."""
         from custom_components.marinetraffic_tracker.const import ATTR_ANCHORED_VESSELS
+
         active = _make_vessel(mmsi="444444444", status="Under Way Using Engine")
         sensor = _make_count_sensor({active.mmsi: active}, anchored={})
         attrs = sensor.extra_state_attributes
@@ -495,6 +501,7 @@ class TestCoordinatorStaletimeout:
     def test_default_stale_timeout_when_not_configured(self) -> None:
         """When stale_timeout is absent from both data and options, default is used."""
         from custom_components.marinetraffic_tracker.const import DEFAULT_STALE_TIMEOUT
+
         entry = self._make_entry(
             data={
                 "tracking_mode": "radius",

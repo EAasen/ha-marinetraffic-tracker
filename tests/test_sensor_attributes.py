@@ -35,9 +35,7 @@ from custom_components.marinetraffic_tracker.const import (
     ATTR_VESSEL_NAME,
     ATTR_VESSEL_TYPE,
 )
-from custom_components.marinetraffic_tracker.device_tracker import (
-    MarineTrafficVesselTracker,
-)
+from custom_components.marinetraffic_tracker.device_tracker import MarineTrafficVesselTracker
 from custom_components.marinetraffic_tracker.sensor import MarineTrafficVesselSensor
 
 # ---------------------------------------------------------------------------
@@ -222,9 +220,9 @@ class TestSensorTrackerAttributeConsistency:
         tracker_attrs = _make_tracker(vessel).extra_state_attributes
 
         tracker_only_missing = set(tracker_attrs.keys()) - set(sensor_attrs.keys())
-        assert tracker_only_missing == set(), (
-            f"Sensor is missing these tracker keys: {tracker_only_missing}"
-        )
+        assert (
+            tracker_only_missing == set()
+        ), f"Sensor is missing these tracker keys: {tracker_only_missing}"
 
     def test_sensor_extra_keys_are_lat_lon_only(self) -> None:
         """Sensor may have latitude/longitude extras that tracker does not."""
@@ -233,9 +231,10 @@ class TestSensorTrackerAttributeConsistency:
         tracker_attrs = _make_tracker(vessel).extra_state_attributes
 
         sensor_extra = set(sensor_attrs.keys()) - set(tracker_attrs.keys())
-        assert sensor_extra <= {"latitude", "longitude"}, (
-            f"Unexpected sensor-only keys: {sensor_extra - {'latitude', 'longitude'}}"
-        )
+        assert sensor_extra <= {
+            "latitude",
+            "longitude",
+        }, f"Unexpected sensor-only keys: {sensor_extra - {'latitude', 'longitude'}}"
 
 
 # ---------------------------------------------------------------------------
@@ -330,8 +329,16 @@ class TestPositionHistory:
         coord.last_update_success = True
         coord.data = {vessel.mmsi: vessel}
         history = [
-            {"latitude": 59.9, "longitude": 10.7, "timestamp": "2026-05-01T12:00:00+00:00"},
-            {"latitude": 59.91, "longitude": 10.71, "timestamp": "2026-05-01T12:01:00+00:00"},
+            {
+                "latitude": 59.9,
+                "longitude": 10.7,
+                "timestamp": "2026-05-01T12:00:00+00:00",
+            },
+            {
+                "latitude": 59.91,
+                "longitude": 10.71,
+                "timestamp": "2026-05-01T12:01:00+00:00",
+            },
         ]
         coord.get_position_history = MagicMock(return_value=history)
 

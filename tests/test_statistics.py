@@ -342,9 +342,7 @@ async def test_hourly_and_daily_counts_incremented() -> None:
 
     fixed_now = datetime(2026, 5, 6, 14, 0, 0, tzinfo=UTC)  # Wednesday, hour 14
     with patch("custom_components.marinetraffic_tracker.coordinator.asyncio.sleep"):
-        with patch(
-            "custom_components.marinetraffic_tracker.coordinator.datetime"
-        ) as mock_dt:
+        with patch("custom_components.marinetraffic_tracker.coordinator.datetime") as mock_dt:
             mock_dt.now.return_value = fixed_now
             await coordinator.async_refresh()
 

@@ -542,6 +542,6 @@ class TestRadiusToZoom:
         """Increasing radius must not increase zoom across multiple pairs."""
         pairs = [(1, 10), (10, 50), (50, 100), (100, 200), (200, 500)]
         for smaller, larger in pairs:
-            assert _radius_to_zoom(larger) <= _radius_to_zoom(smaller), (
-                f"zoom({larger} km) should be ≤ zoom({smaller} km)"
-            )
+            assert _radius_to_zoom(larger) <= _radius_to_zoom(
+                smaller
+            ), f"zoom({larger} km) should be ≤ zoom({smaller} km)"

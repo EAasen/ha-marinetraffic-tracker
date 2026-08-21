@@ -21,10 +21,7 @@ import aiohttp
 import pytest
 
 from custom_components.marinetraffic_tracker.aishub_client import AISHubClient
-from custom_components.marinetraffic_tracker.client import (
-    MarineTrafficClient,
-    _haversine_km,
-)
+from custom_components.marinetraffic_tracker.client import MarineTrafficClient, _haversine_km
 from custom_components.marinetraffic_tracker.kystverket_client import KystverketClient
 from custom_components.marinetraffic_tracker.vesselfinder_client import (
     VesselFinderClient,
@@ -66,19 +63,19 @@ _BASE_AISHUB_ROW: dict = {
 }
 
 _BASE_VF_ROW: list = [
-    123456789,   # MMSI
+    123456789,  # MMSI
     "TEST VESSEL",
-    59.9,        # lat
-    10.7,        # lon
-    12.5,        # speed
-    91.0,        # course
-    90,          # heading
-    0,           # nav status
-    70,          # type
-    "NO",        # flag
-    9123456,     # IMO
-    "LAABC",     # callsign
-    225,         # length
+    59.9,  # lat
+    10.7,  # lon
+    12.5,  # speed
+    91.0,  # course
+    90,  # heading
+    0,  # nav status
+    70,  # type
+    "NO",  # flag
+    9123456,  # IMO
+    "LAABC",  # callsign
+    225,  # length
 ]
 
 _BASE_KV_ROW: dict = {
@@ -156,9 +153,7 @@ class TestMarineTrafficHTTP:
         """A 200 response with valid JSON must return parsed vessels."""
         session = MagicMock()
         session.get = MagicMock(
-            return_value=_make_response_cm(
-                200, {"data": {"rows": [_BASE_MT_ROW]}}
-            )
+            return_value=_make_response_cm(200, {"data": {"rows": [_BASE_MT_ROW]}})
         )
         client = MarineTrafficClient(session)
         vessels = await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
@@ -189,9 +184,7 @@ class TestMarineTrafficHTTP:
             status=503,
         )
         session = MagicMock()
-        session.get = MagicMock(
-            return_value=_make_raise_for_status_cm(503, exc)
-        )
+        session.get = MagicMock(return_value=_make_raise_for_status_cm(503, exc))
         client = MarineTrafficClient(session)
         with pytest.raises(aiohttp.ClientResponseError):
             await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
@@ -234,9 +227,7 @@ class TestMarineTrafficHTTP:
     async def test_empty_rows_returns_empty_list(self) -> None:
         """An empty rows list in a valid response must return an empty list."""
         session = MagicMock()
-        session.get = MagicMock(
-            return_value=_make_response_cm(200, {"data": {"rows": []}})
-        )
+        session.get = MagicMock(return_value=_make_response_cm(200, {"data": {"rows": []}}))
         client = MarineTrafficClient(session)
         vessels = await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
         assert vessels == []
@@ -246,9 +237,7 @@ class TestMarineTrafficHTTP:
         """Vessels returned by MarineTrafficClient must have source='marinetraffic'."""
         session = MagicMock()
         session.get = MagicMock(
-            return_value=_make_response_cm(
-                200, {"data": {"rows": [_BASE_MT_ROW]}}
-            )
+            return_value=_make_response_cm(200, {"data": {"rows": [_BASE_MT_ROW]}})
         )
         client = MarineTrafficClient(session)
         vessels = await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
@@ -262,9 +251,7 @@ class TestMarineTrafficRadius:
     async def test_get_vessels_in_radius_calls_get_vessels_in_box(self) -> None:
         """get_vessels_in_radius must delegate to get_vessels_in_box."""
         session = MagicMock()
-        session.get = MagicMock(
-            return_value=_make_response_cm(200, {"data": {"rows": []}})
-        )
+        session.get = MagicMock(return_value=_make_response_cm(200, {"data": {"rows": []}}))
         client = MarineTrafficClient(session)
         await client.get_vessels_in_radius(59.9, 10.7, 50.0)
         session.get.assert_called_once()
@@ -282,9 +269,7 @@ class TestMarineTrafficRadius:
         }
         session = MagicMock()
         session.get = MagicMock(
-            return_value=_make_response_cm(
-                200, {"data": {"rows": [inside_row, outside_row]}}
-            )
+            return_value=_make_response_cm(200, {"data": {"rows": [inside_row, outside_row]}})
         )
         client = MarineTrafficClient(session)
         vessels = await client.get_vessels_in_radius(59.9, 10.7, 50.0)
@@ -298,9 +283,7 @@ class TestMarineTrafficRadius:
         row2 = {**_BASE_MT_ROW, "MMSI": "987654321", "LAT": 59.91, "LON": 10.71}
         session = MagicMock()
         session.get = MagicMock(
-            return_value=_make_response_cm(
-                200, {"data": {"rows": [_BASE_MT_ROW, row2]}}
-            )
+            return_value=_make_response_cm(200, {"data": {"rows": [_BASE_MT_ROW, row2]}})
         )
         client = MarineTrafficClient(session)
         vessels = await client.get_vessels_in_radius(59.9, 10.7, 50.0)
@@ -335,9 +318,7 @@ class TestAISHubHTTP:
             status=500,
         )
         session = MagicMock()
-        session.get = MagicMock(
-            return_value=_make_raise_for_status_cm(500, exc)
-        )
+        session.get = MagicMock(return_value=_make_raise_for_status_cm(500, exc))
         client = AISHubClient(session, api_key="TESTKEY")
         with pytest.raises(aiohttp.ClientResponseError):
             await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
@@ -501,7 +482,9 @@ class TestKystverketHTTP:
             await client._get_access_token()
 
     @pytest.mark.asyncio
-    async def test_box_request_uses_live_api_params_and_filters_outside_vessels(self) -> None:
+    async def test_box_request_uses_live_api_params_and_filters_outside_vessels(
+        self,
+    ) -> None:
         """The live AIS request should use the documented params and keep only in-box vessels."""
         outside_row = {
             "type": "Feature",
@@ -560,9 +543,7 @@ class TestVesselFinderHTTP:
     async def test_successful_response_returns_vessels(self) -> None:
         """A 200 response with valid VesselFinder compact JSON must return vessels."""
         session = MagicMock()
-        session.get = MagicMock(
-            return_value=_make_response_cm(200, [_BASE_VF_ROW])
-        )
+        session.get = MagicMock(return_value=_make_response_cm(200, [_BASE_VF_ROW]))
         client = VesselFinderClient(session)
         vessels = await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
         assert len(vessels) == 1
@@ -610,9 +591,7 @@ class TestVesselFinderHTTP:
             status=500,
         )
         session = MagicMock()
-        session.get = MagicMock(
-            return_value=_make_raise_for_status_cm(500, exc)
-        )
+        session.get = MagicMock(return_value=_make_raise_for_status_cm(500, exc))
         client = VesselFinderClient(session)
         with pytest.raises(aiohttp.ClientResponseError):
             await client.get_vessels_in_box(60.0, 11.0, 59.0, 10.0)
@@ -684,11 +663,23 @@ class TestVesselFinderRadius:
     async def test_haversine_filter_applied(self) -> None:
         """Vessels outside the radius must be excluded."""
         inside_row = list(_BASE_VF_ROW)  # lat=59.9, lon=10.7 — close to centre
-        outside_row = [999999999, "FAR VESSEL", 65.0, 10.7, 0, 0, 511, 15, 0, "", 0, "", 0]
+        outside_row = [
+            999999999,
+            "FAR VESSEL",
+            65.0,
+            10.7,
+            0,
+            0,
+            511,
+            15,
+            0,
+            "",
+            0,
+            "",
+            0,
+        ]
         session = MagicMock()
-        session.get = MagicMock(
-            return_value=_make_response_cm(200, [inside_row, outside_row])
-        )
+        session.get = MagicMock(return_value=_make_response_cm(200, [inside_row, outside_row]))
         client = VesselFinderClient(session)
         vessels = await client.get_vessels_in_radius(59.9, 10.7, 50.0)
         mmsis = {v.mmsi for v in vessels}

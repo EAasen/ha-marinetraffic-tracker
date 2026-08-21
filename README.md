@@ -1,6 +1,9 @@
 # Norwegian Maritime Tracker for Home Assistant 🚢
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![Tests](https://github.com/EAasen/ha-marinetraffic-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/EAasen/ha-marinetraffic-tracker/actions/workflows/tests.yml)
+[![Lint](https://github.com/EAasen/ha-marinetraffic-tracker/actions/workflows/lint.yml/badge.svg)](https://github.com/EAasen/ha-marinetraffic-tracker/actions/workflows/lint.yml)
+[![Validate](https://github.com/EAasen/ha-marinetraffic-tracker/actions/workflows/validate.yml/badge.svg)](https://github.com/EAasen/ha-marinetraffic-tracker/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Official Kystverket AIS maritime tracker for Home Assistant. Real-time vessel tracking in Norwegian waters using the Norwegian Coastal Administration live AIS feed exposed through BarentsWatch.
@@ -74,3 +77,9 @@ The integration uses the official BarentsWatch AIS API. You need free API creden
 - The integration domain remains `marinetraffic_tracker` for compatibility with existing installs.
 - The active code path now uses the official Norwegian feed instead of scraper-first logic.
 - International and multi-source tracking is planned for a later v2.0.0 roadmap release.
+
+## CI / CD
+
+GitHub Actions now provides separate workflows for tests, linting, validation, and tagged releases.
+
+For repository protection, configure the `Tests`, `Lint`, and `Validate` workflows as required status checks on `main`, and require at least one approving code review before merge.

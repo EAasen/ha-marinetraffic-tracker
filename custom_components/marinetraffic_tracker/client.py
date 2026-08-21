@@ -413,7 +413,7 @@ class MarineTrafficClient:
             eta=str(row["ETA_CALC"]) if row.get("ETA_CALC") else None,
             imo=str(row["IMO"]) if row.get("IMO") else None,
             flag=str(row["FLAG"]).strip() or None if row.get("FLAG") else None,
-            callsign=str(row["CALLSIGN"]).strip() or None if row.get("CALLSIGN") else None,
+            callsign=(str(row["CALLSIGN"]).strip() or None if row.get("CALLSIGN") else None),
             length=length,
             draught=draught,
             rate_of_turn=rate_of_turn,
