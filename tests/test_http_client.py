@@ -485,7 +485,7 @@ class TestKystverketHTTP:
             (
                 401,
                 "BarentsWatch authentication failed \\(HTTP 401\\).*"
-                "Client ID or Client Secret is invalid",
+                "The Client ID or Client Secret is invalid\\.",
             ),
         ],
     )
