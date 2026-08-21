@@ -64,7 +64,7 @@ from .const import (
     vessel_photo_url,
 )
 from .coordinator import MarineTrafficCoordinator
-from .entity import MarineTrafficEntity
+from .entity import MarineTrafficEntity, MarineTrafficVesselEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ class MarineTrafficCountSensor(MarineTrafficEntity, SensorEntity):
 # ---------------------------------------------------------------------------
 
 
-class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
+class MarineTrafficVesselSensor(MarineTrafficVesselEntity, SensorEntity):
     """Sensor representing a single tracked vessel.
 
     State: current navigational status (e.g. "Under Way Using Engine").
@@ -209,8 +209,7 @@ class MarineTrafficVesselSensor(MarineTrafficEntity, SensorEntity):
         entry_id: str,
         mmsi: str,
     ) -> None:
-        super().__init__(coordinator, entry_id)
-        self._mmsi = mmsi
+        super().__init__(coordinator, entry_id, mmsi)
         self._attr_unique_id = f"{entry_id}_vessel_{mmsi}"
 
     # ------------------------------------------------------------------
