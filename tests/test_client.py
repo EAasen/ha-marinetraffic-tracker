@@ -5,6 +5,7 @@ from __future__ import annotations
 from custom_components.marinetraffic_tracker.client import (
     MarineTrafficClient,
     VesselData,
+    _haversine_km,
     _nav_status_to_str,
     _radius_to_zoom,
 )
@@ -545,3 +546,62 @@ class TestRadiusToZoom:
             assert _radius_to_zoom(larger) <= _radius_to_zoom(smaller), (
                 f"zoom({larger} km) should be ≤ zoom({smaller} km)"
             )
+
+
+# ---------------------------------------------------------------------------
+# _haversine_km: great-circle distance calculation accuracy
+# ---------------------------------------------------------------------------
+
+
+class TestHaversineKm:
+    """Tests for the _haversine_km great-circle distance helper."""
+
+    def test_same_point_returns_zero(self) -> None:
+        """Distance between a point and itself must be zero."""
+        assert _haversine_km(59.9, 10.7, 59.9, 10.7) == 0.0
+
+    def test_known_distance_oslo_bergen(self) -> None:
+        """Oslo → Bergen is approximately 304 km by great-circle (within 5 km tolerance)."""
+        # Oslo: 59.913, 10.738 / Bergen: 60.391, 5.324
+        dist = _haversine_km(59.913, 10.738, 60.391, 5.324)
+        assert abs(dist - 304) < 5, f"Expected ~304 km, got {dist:.1f} km"
+
+    def test_known_distance_equatorial_degree(self) -> None:
+        """One degree of longitude at the equator is approximately 111.32 km."""
+        dist = _haversine_km(0.0, 0.0, 0.0, 1.0)
+        assert abs(dist - 111.32) < 0.5, f"Expected ~111.32 km, got {dist:.2f} km"
+
+    def test_result_is_symmetric(self) -> None:
+        """Distance A→B must equal distance B→A."""
+        d_ab = _haversine_km(59.9, 10.7, 60.4, 5.3)
+        d_ba = _haversine_km(60.4, 5.3, 59.9, 10.7)
+        assert abs(d_ab - d_ba) < 1e-9
+
+    def test_result_is_non_negative(self) -> None:
+        """Distance must never be negative regardless of argument order."""
+        assert _haversine_km(0.0, 0.0, -10.0, -10.0) >= 0.0
+
+    def test_returns_float(self) -> None:
+        """Return type must be float."""
+        result = _haversine_km(59.9, 10.7, 60.0, 11.0)
+        assert isinstance(result, float)
+
+    def test_vessel_inside_radius_passes_filter(self) -> None:
+        """A vessel 10 km away from centre should be within a 50 km radius."""
+        centre_lat, centre_lon = 59.9, 10.7
+        # Roughly 10 km north (≈0.09° of latitude)
+        vessel_lat, vessel_lon = 59.99, 10.7
+        dist = _haversine_km(centre_lat, centre_lon, vessel_lat, vessel_lon)
+        assert dist < 50.0
+
+    def test_vessel_outside_radius_excluded(self) -> None:
+        """A vessel 200 km away from centre should be outside a 50 km radius."""
+        centre_lat, centre_lon = 59.9, 10.7
+        # Bergen is ~304 km away from Oslo
+        dist = _haversine_km(centre_lat, centre_lon, 60.391, 5.324)
+        assert dist > 50.0
+
+    def test_antipodal_points_approach_earth_half_circumference(self) -> None:
+        """The distance between antipodal points should be close to π × 6371 km ≈ 20 015 km."""
+        dist = _haversine_km(0.0, 0.0, 0.0, 180.0)
+        assert abs(dist - 20_015) < 5

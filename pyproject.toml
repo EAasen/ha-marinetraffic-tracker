@@ -16,3 +16,10 @@ ignore = [
   "S101",  # assert statements (used in tests)
   "S311",  # Standard pseudo-random generators (used for jitter; flagged but intentional)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+  "S105",  # hardcoded password strings are expected in test fixtures
+  "S106",  # hardcoded password function arguments are expected in tests
+  "S107",  # hardcoded password default arguments are expected in tests
+]
