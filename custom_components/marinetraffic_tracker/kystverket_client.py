@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -20,6 +21,18 @@ _VESSELS_URL = "https://live.ais.barentswatch.no/v1/combined"
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=60)
 _TOKEN_REFRESH_BUFFER = 60
 _HEADING_NOT_AVAILABLE = 511
+
+# Retry configuration for transient HTTP errors (429, 5xx).
+_MAX_RETRIES = 3
+_RETRY_BASE_DELAY = 2.0  # seconds; doubles on each attempt
+
+
+class KystverketAuthError(RuntimeError):
+    """Raised when BarentsWatch returns an authentication or authorisation error.
+
+    Catching this specific type lets the coordinator promote the failure to a
+    ``ConfigEntryAuthFailed`` exception without relying on message-string matching.
+    """
 
 
 class KystverketClient:
@@ -102,30 +115,44 @@ class KystverketClient:
             "grant_type": "client_credentials",
         }
 
-        async with self._session.post(
-            _TOKEN_URL,
-            data=data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=_REQUEST_TIMEOUT,
-        ) as resp:
-            if resp.status == 400:
-                raise RuntimeError(
-                    "BarentsWatch token request failed (HTTP 400). "
-                    "Check that your Client ID and Client Secret are correct."
-                )
-            if resp.status == 401:
-                raise RuntimeError(
-                    "BarentsWatch authentication failed (HTTP 401). "
-                    "The Client ID or Client Secret is invalid."
-                )
-            resp.raise_for_status()
-            payload = await resp.json(content_type=None)
+        _LOGGER.debug("Requesting BarentsWatch access token")
+        try:
+            async with self._session.post(
+                _TOKEN_URL,
+                data=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=_REQUEST_TIMEOUT,
+            ) as resp:
+                if resp.status == 400:
+                    raise KystverketAuthError(
+                        "BarentsWatch token request failed (HTTP 400). "
+                        "Check that your Client ID and Client Secret are correct."
+                    )
+                if resp.status == 401:
+                    raise KystverketAuthError(
+                        "BarentsWatch authentication failed (HTTP 401). "
+                        "The Client ID or Client Secret is invalid."
+                    )
+                if resp.status == 403:
+                    raise KystverketAuthError(
+                        "BarentsWatch token request forbidden (HTTP 403). "
+                        "The Client ID or Client Secret lacks the required permissions."
+                    )
+                resp.raise_for_status()
+                payload = await resp.json(content_type=None)
+        except aiohttp.ServerTimeoutError as exc:
+            _LOGGER.error("Timeout obtaining BarentsWatch token: %s", exc)
+            raise
+        except aiohttp.ClientConnectionError as exc:
+            _LOGGER.error("Connection error obtaining BarentsWatch token: %s", exc)
+            raise
 
         self._access_token = str(payload["access_token"])
         expires_in = int(payload.get("expires_in", 3600))
         self._token_expiry = datetime.now(UTC) + timedelta(
             seconds=max(expires_in - _TOKEN_REFRESH_BUFFER, 0)
         )
+        _LOGGER.debug("BarentsWatch access token obtained (expires in %ds)", expires_in)
         return self._access_token
 
     async def _fetch_payload(
@@ -148,19 +175,96 @@ class KystverketClient:
             "Accept": "application/json",
         }
 
-        async with self._session.get(
-            _VESSELS_URL,
-            headers=headers,
-            params=params,
-            timeout=_REQUEST_TIMEOUT,
-        ) as resp:
-            if resp.status == 401 and retry:
-                return None
-            resp.raise_for_status()
+        last_exc: Exception | None = None
+        max_attempts = _MAX_RETRIES if retry else 1
+        for attempt in range(max_attempts):
             try:
-                return await resp.json(content_type=None)
-            except (JSONDecodeError, aiohttp.ContentTypeError):
-                return self._parse_ndjson(await resp.text())
+                _LOGGER.debug(
+                    "GET %s (attempt %d/%d)", _VESSELS_URL, attempt + 1, max_attempts
+                )
+                async with self._session.get(
+                    _VESSELS_URL,
+                    headers=headers,
+                    params=params,
+                    timeout=_REQUEST_TIMEOUT,
+                ) as resp:
+                    if resp.status == 401 and retry:
+                        _LOGGER.debug(
+                            "BarentsWatch returned 401 — token may have expired; will re-auth"
+                        )
+                        return None
+                    if resp.status == 403:
+                        _LOGGER.error(
+                            "BarentsWatch returned HTTP 403 Forbidden. "
+                            "Check that your API credentials have the 'ais' scope."
+                        )
+                        raise KystverketAuthError(
+                            "BarentsWatch API access forbidden (HTTP 403). "
+                            "Credentials lack the required 'ais' scope."
+                        )
+                    if resp.status == 429:
+                        if not retry:
+                            resp.raise_for_status()
+                        retry_after = int(resp.headers.get("Retry-After", 0))
+                        delay = (
+                            retry_after
+                            if retry_after > 0
+                            else _RETRY_BASE_DELAY * (2 ** attempt)
+                        )
+                        _LOGGER.warning(
+                            "BarentsWatch rate-limited (HTTP 429); retrying in %.0f s "
+                            "(attempt %d/%d)",
+                            delay,
+                            attempt + 1,
+                            max_attempts,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    if resp.status >= 500:
+                        if not retry:
+                            resp.raise_for_status()
+                        delay = _RETRY_BASE_DELAY * (2 ** attempt)
+                        _LOGGER.warning(
+                            "BarentsWatch server error (HTTP %d); retrying in %.0f s "
+                            "(attempt %d/%d)",
+                            resp.status,
+                            delay,
+                            attempt + 1,
+                            max_attempts,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    resp.raise_for_status()
+                    try:
+                        return await resp.json(content_type=None)
+                    except (JSONDecodeError, aiohttp.ContentTypeError):
+                        return self._parse_ndjson(await resp.text())
+            except aiohttp.ServerTimeoutError as exc:
+                _LOGGER.warning(
+                    "Timeout fetching BarentsWatch vessel data (attempt %d/%d): %s",
+                    attempt + 1,
+                    max_attempts,
+                    exc,
+                )
+                last_exc = exc
+                if attempt + 1 < max_attempts:
+                    await asyncio.sleep(_RETRY_BASE_DELAY * (2 ** attempt))
+            except aiohttp.ClientConnectionError as exc:
+                _LOGGER.warning(
+                    "Connection error fetching BarentsWatch vessel data (attempt %d/%d): %s",
+                    attempt + 1,
+                    max_attempts,
+                    exc,
+                )
+                last_exc = exc
+                if attempt + 1 < max_attempts:
+                    await asyncio.sleep(_RETRY_BASE_DELAY * (2 ** attempt))
+            except (RuntimeError, aiohttp.ClientResponseError):
+                raise
+
+        if last_exc is not None:
+            raise last_exc
+        return None
 
     def _parse_ndjson(self, text: str) -> list[dict[str, Any]]:
         """Parse newline-delimited JSON payloads."""

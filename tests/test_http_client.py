@@ -25,7 +25,10 @@ from custom_components.marinetraffic_tracker.client import (
     MarineTrafficClient,
     _haversine_km,
 )
-from custom_components.marinetraffic_tracker.kystverket_client import KystverketClient
+from custom_components.marinetraffic_tracker.kystverket_client import (
+    KystverketAuthError,
+    KystverketClient,
+)
 from custom_components.marinetraffic_tracker.vesselfinder_client import (
     VesselFinderClient,
 )
@@ -497,7 +500,7 @@ class TestKystverketHTTP:
         session.post = MagicMock(return_value=_make_response_cm(status, {}))
         client = KystverketClient(session, client_id="id", client_secret="secret")  # noqa: S106
 
-        with pytest.raises(RuntimeError, match=match):
+        with pytest.raises(KystverketAuthError, match=match):
             await client._get_access_token()
 
     @pytest.mark.asyncio

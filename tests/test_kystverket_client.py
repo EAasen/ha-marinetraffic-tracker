@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from custom_components.marinetraffic_tracker.kystverket_client import KystverketClient
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiohttp
+import pytest
+
+from custom_components.marinetraffic_tracker.kystverket_client import (
+    KystverketAuthError,
+    KystverketClient,
+)
 
 
 def _make_client() -> KystverketClient:
@@ -190,3 +198,134 @@ def test_parse_ndjson_ignores_invalid_lines() -> None:
     rows = client._parse_ndjson('{"mmsi": 1, "latitude": 60, "longitude": 5}\nnot-json\n')
 
     assert rows == [{"mmsi": 1, "latitude": 60, "longitude": 5}]
+
+
+
+# ---------------------------------------------------------------------------
+# HTTP error handling tests
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_response(status: int, headers: dict | None = None) -> MagicMock:
+    """Build a minimal aiohttp-style async context manager mock response."""
+    resp = MagicMock()
+    resp.status = status
+    resp.headers = headers or {}
+    resp.raise_for_status = MagicMock()
+    resp.__aenter__ = AsyncMock(return_value=resp)
+    resp.__aexit__ = AsyncMock(return_value=False)
+    return resp
+
+
+def _make_client_with_session(session: MagicMock) -> KystverketClient:
+    """Return a client backed by a mock session."""
+    client = KystverketClient.__new__(KystverketClient)
+    client._session = session
+    client._client_id = "test-id"
+    client._client_secret = "test-secret"  # noqa: S105
+    client._access_token = "pre-fetched-token"  # noqa: S105
+    client._token_expiry = None  # will be treated as expired unless set
+    return client
+
+
+@pytest.mark.asyncio
+async def test_fetch_payload_returns_none_on_401_retry() -> None:
+    """A 401 response with retry=True should return None (trigger re-auth)."""
+    session = MagicMock()
+    resp = _make_mock_response(401)
+    session.get = MagicMock(return_value=resp)
+
+    client = _make_client_with_session(session)
+    result = await client._fetch_payload("token", 60, 6, 59, 5, retry=True)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_payload_raises_runtime_error_on_403() -> None:
+    """A 403 response should raise KystverketAuthError with a descriptive message."""
+    session = MagicMock()
+    resp = _make_mock_response(403)
+    session.get = MagicMock(return_value=resp)
+
+    client = _make_client_with_session(session)
+    with pytest.raises(KystverketAuthError, match="403"):
+        await client._fetch_payload("token", 60, 6, 59, 5)
+
+
+@pytest.mark.asyncio
+async def test_fetch_payload_retries_on_429_then_succeeds() -> None:
+    """A 429 followed by a 200 should succeed after backoff."""
+    session = MagicMock()
+    resp_429 = _make_mock_response(429, headers={"Retry-After": "0"})
+    resp_200 = _make_mock_response(200)
+    resp_200.json = AsyncMock(return_value=[{"mmsi": 1}])
+
+    call_count = 0
+
+    def _get_side_effect(*_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        return resp_200 if call_count > 1 else resp_429
+
+    session.get = MagicMock(side_effect=_get_side_effect)
+
+    client = _make_client_with_session(session)
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        result = await client._fetch_payload("token", 60, 6, 59, 5)
+
+    assert result == [{"mmsi": 1}]
+
+
+@pytest.mark.asyncio
+async def test_fetch_payload_retries_on_500_then_succeeds() -> None:
+    """A 500 response followed by a 200 should succeed after backoff."""
+    session = MagicMock()
+    resp_500 = _make_mock_response(500)
+    resp_200 = _make_mock_response(200)
+    resp_200.json = AsyncMock(return_value=[])
+
+    call_count = 0
+
+    def _get_side_effect(*_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        return resp_200 if call_count > 1 else resp_500
+
+    session.get = MagicMock(side_effect=_get_side_effect)
+
+    client = _make_client_with_session(session)
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        result = await client._fetch_payload("token", 60, 6, 59, 5)
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_access_token_raises_on_403() -> None:
+    """A 403 from the token endpoint should raise KystverketAuthError."""
+    session = MagicMock()
+    resp = _make_mock_response(403)
+    session.post = MagicMock(return_value=resp)
+
+    client = _make_client_with_session(session)
+    client._access_token = None
+    client._token_expiry = None
+
+    with pytest.raises(KystverketAuthError, match="403"):
+        await client._get_access_token()
+
+
+@pytest.mark.asyncio
+async def test_fetch_payload_raises_on_timeout() -> None:
+    """A ServerTimeoutError should be re-raised after exhausting retries."""
+    session = MagicMock()
+
+    def _get_side_effect(*_args, **_kwargs):
+        raise aiohttp.ServerTimeoutError()
+
+    session.get = MagicMock(side_effect=_get_side_effect)
+
+    client = _make_client_with_session(session)
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(aiohttp.ServerTimeoutError):
+            await client._fetch_payload("token", 60, 6, 59, 5)
