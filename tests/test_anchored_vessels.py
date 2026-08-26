@@ -12,9 +12,11 @@ from custom_components.marinetraffic_tracker.const import (
     ANCHOR_SWING_THRESHOLD_KM,
     ANCHORED_STATUSES,
     CONF_EXCLUDE_ANCHORED,
+    CONF_EXCLUDE_MOORED,
     CONF_STALE_TIMEOUT,
     CONF_UPDATE_INTERVAL,
     DEFAULT_EXCLUDE_ANCHORED,
+    DEFAULT_EXCLUDE_MOORED,
     DEFAULT_STALE_TIMEOUT,
 )
 from custom_components.marinetraffic_tracker.coordinator import MarineTrafficCoordinator
@@ -54,9 +56,13 @@ def _make_coordinator(
     client: AsyncMock,
     *,
     exclude_anchored: bool = False,
+    exclude_moored: bool = False,
     stale_timeout: int = DEFAULT_STALE_TIMEOUT,
 ) -> MarineTrafficCoordinator:
-    options: dict = {CONF_EXCLUDE_ANCHORED: exclude_anchored}
+    options: dict = {
+        CONF_EXCLUDE_ANCHORED: exclude_anchored,
+        CONF_EXCLUDE_MOORED: exclude_moored,
+    }
     entry = _make_entry(options=options)
     entry.data[CONF_STALE_TIMEOUT] = stale_timeout
     return MarineTrafficCoordinator(hass, entry, client)
@@ -85,6 +91,11 @@ def test_anchor_swing_threshold_is_positive() -> None:
 def test_default_exclude_anchored_is_false() -> None:
     """DEFAULT_EXCLUDE_ANCHORED must default to False (opt-in feature)."""
     assert DEFAULT_EXCLUDE_ANCHORED is False
+
+
+def test_default_exclude_moored_is_false() -> None:
+    """DEFAULT_EXCLUDE_MOORED must default to False (opt-in feature)."""
+    assert DEFAULT_EXCLUDE_MOORED is False
 
 
 # ---------------------------------------------------------------------------
@@ -150,18 +161,50 @@ async def test_anchored_vessel_stored_in_anchored_dict_when_toggle_on() -> None:
 
 @pytest.mark.asyncio
 async def test_moored_vessel_excluded_when_toggle_on() -> None:
-    """Moored vessels must also be excluded when exclude_anchored=True."""
+    """Moored vessels must be excluded only when exclude_moored=True."""
     hass = MagicMock()
     hass.bus = MagicMock()
     hass.bus.async_fire = MagicMock()
     client = AsyncMock()
     client.get_vessels_in_radius = AsyncMock(return_value=[_MOORED_VESSEL])
 
-    coordinator = _make_coordinator(hass, client, exclude_anchored=True)
+    coordinator = _make_coordinator(hass, client, exclude_moored=True)
     result = await coordinator._async_update_data()
 
     assert _MOORED_VESSEL.mmsi not in result
     assert _MOORED_VESSEL.mmsi in coordinator._anchored_vessels
+
+
+@pytest.mark.asyncio
+async def test_moored_vessel_included_when_only_exclude_anchored_is_on() -> None:
+    """Moored vessels should remain active unless the moored toggle is enabled."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_MOORED_VESSEL])
+
+    coordinator = _make_coordinator(hass, client, exclude_anchored=True, exclude_moored=False)
+    result = await coordinator._async_update_data()
+
+    assert _MOORED_VESSEL.mmsi in result
+    assert _MOORED_VESSEL.mmsi not in coordinator._anchored_vessels
+
+
+@pytest.mark.asyncio
+async def test_anchored_vessel_included_when_only_exclude_moored_is_on() -> None:
+    """Anchored vessels should remain active unless the anchored toggle is enabled."""
+    hass = MagicMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
+    client = AsyncMock()
+    client.get_vessels_in_radius = AsyncMock(return_value=[_ANCHORED_VESSEL])
+
+    coordinator = _make_coordinator(hass, client, exclude_anchored=False, exclude_moored=True)
+    result = await coordinator._async_update_data()
+
+    assert _ANCHORED_VESSEL.mmsi in result
+    assert _ANCHORED_VESSEL.mmsi not in coordinator._anchored_vessels
 
 
 @pytest.mark.asyncio

@@ -98,6 +98,7 @@ CONF_UPDATE_INTERVAL = "update_interval"
 CONF_STALE_TIMEOUT = "stale_timeout"
 CONF_FILTER_VESSEL_TYPES = "filter_vessel_types"
 CONF_EXCLUDE_ANCHORED = "exclude_anchored"
+CONF_EXCLUDE_MOORED = "exclude_moored"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -110,6 +111,7 @@ DEFAULT_JITTER_MAX = 10  # seconds of random pre-request delay
 DEFAULT_FILTER_VESSEL_TYPES: list[str] = []  # empty = no filter (show all types)
 DEFAULT_HISTORY_SIZE = 20  # maximum position history points stored per vessel
 DEFAULT_EXCLUDE_ANCHORED = False  # by default, anchored vessels are included in live map
+DEFAULT_EXCLUDE_MOORED = False  # by default, moored vessels are included in live map
 
 # ---------------------------------------------------------------------------
 # Safety limits — anti-ban rate limiting compliance

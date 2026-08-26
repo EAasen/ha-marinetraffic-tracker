@@ -2,8 +2,22 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![HA Version Compatibility](https://github.com/EAasen/ha-marinetraffic-tracker/actions/workflows/ha-version-matrix.yml/badge.svg)](https://github.com/EAasen/ha-marinetraffic-tracker/actions/workflows/ha-version-matrix.yml)
 
 Official Kystverket AIS maritime tracker for Home Assistant. Real-time vessel tracking in Norwegian waters using the Norwegian Coastal Administration live AIS feed exposed through BarentsWatch.
+
+## Home Assistant Version Compatibility
+
+| Home Assistant Version | Supported |
+|------------------------|-----------|
+| 2025.x                 | ✅ Tested |
+| 2024.x                 | ✅ Tested |
+| 2023.x (≥ 2023.1)     | ✅ Tested |
+| < 2023.1               | ❌ Not supported |
+
+**Minimum supported version:** Home Assistant **2023.1.0**
+
+The integration logs the running HA version at startup and emits a warning if the version is below the minimum requirement. A GitHub Actions matrix job tests the integration against multiple HA versions on every push and weekly schedule.
 
 ## What changed for v1.0.0
 
