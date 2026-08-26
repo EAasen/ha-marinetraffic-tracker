@@ -19,7 +19,6 @@ from custom_components.marinetraffic_tracker.const import DOMAIN, VESSEL_TYPE_MA
 from custom_components.marinetraffic_tracker.device_tracker import (
     MarineTrafficVesselTracker,
 )
-from custom_components.marinetraffic_tracker.entity import MarineTrafficEntity
 from custom_components.marinetraffic_tracker.sensor import (
     MarineTrafficCountSensor,
     MarineTrafficVesselSensor,

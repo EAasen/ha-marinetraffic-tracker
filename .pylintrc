@@ -1,0 +1,63 @@
+[MAIN]
+# Use multiple processes to speed up Pylint
+jobs = 1
+
+# Python code to execute — useful for mocking missing modules
+init-hook = "import sys; sys.path.insert(0, '.')"
+
+[MESSAGES CONTROL]
+disable =
+    # Missing docstrings — Home Assistant custom components may omit module docstrings
+    missing-module-docstring,
+    # Protected member access — common in HA integration patterns
+    protected-access,
+    # Too few public methods — typical for small HA entities
+    too-few-public-methods,
+    # Broad exception caught — used intentionally with noqa comments
+    broad-exception-caught,
+    # Import errors for homeassistant stubs (not installed in lint env)
+    import-error,
+    # Duplicate code — HA clients share similar structure intentionally
+    duplicate-code,
+    # Fixme — TODO comments are acceptable
+    fixme,
+    # HA config flows have abstract methods handled by the framework
+    abstract-method,
+    # HA config flows call super().__init__() via the framework
+    super-init-not-called,
+    # Unused arguments in override methods with fixed signatures
+    unused-argument,
+
+[FORMAT]
+# Maximum number of characters on a single line
+max-line-length = 100
+
+[DESIGN]
+# Maximum number of arguments for function / method
+max-args = 10
+# Maximum number of locals for function / method body
+max-locals = 36
+# Maximum number of return statements in function / method body
+max-returns = 6
+# Maximum number of branch for function / method body
+max-branches = 24
+# Maximum number of statements in function / method body
+max-statements = 85
+# Maximum number of instance attributes
+max-attributes = 23
+
+[BASIC]
+# Naming conventions following Home Assistant standards
+good-names = i, j, k, ex, _, v, n, e, dt
+
+[SIMILARITIES]
+# Minimum lines number of a similarity
+min-similarity-lines = 6
+
+[TYPECHECK]
+# List of module names for which member attributes should not be checked
+ignored-modules = homeassistant
+
+[REPORTS]
+# Activate the evaluation score
+score = yes

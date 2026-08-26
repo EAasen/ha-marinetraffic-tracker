@@ -8,7 +8,6 @@ Covers:
 
 from __future__ import annotations
 
-import math
 from dataclasses import replace
 
 import pytest
@@ -20,7 +19,7 @@ from custom_components.marinetraffic_tracker.geo_filter import (
     build_geo_filter,
 )
 
-from .conftest import MOCK_VESSEL_CARGO, MOCK_VESSEL_PASSENGER, MOCK_VESSEL_TANKER
+from .conftest import MOCK_VESSEL_CARGO
 
 # ---------------------------------------------------------------------------
 # Helpers
